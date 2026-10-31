@@ -52,9 +52,9 @@ tests/
 
 ## Demo data
 
-The seed includes 34 customers, 24 products, 127 transactions, 24 expenses, and 6 marketing campaigns. Purchase dates are generated within the last 90 days. Transaction items keep the product price and cost at the time of sale, so revenue and estimated profit remain based on transaction history.
+The seed includes 34 customers, 24 products, 418 transactions, 24 expenses, and 6 marketing campaigns. Purchase dates are generated within the last 90 days. Transaction items keep the product price and cost at the time of sale, so revenue and estimated profit remain based on transaction history.
 
-Customer segments are derived from purchases: high-value customers have spent at least ₹15,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
+Customer segments are derived from purchases: high-value customers have spent at least ₹50,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
 
 The `useDemoStore` hook provides typed create/update/delete helpers for customer, product, transaction, expense, and campaign records. It saves updates to browser local storage and validates transaction references before saving. Local data can be reset with the hook's `reset` method.
 

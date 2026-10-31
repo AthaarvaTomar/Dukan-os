@@ -34,15 +34,19 @@ const localities = [
   "Whitefield", "Rajajinagar", "Basavanagudi", "BTM Layout", "Banashankari",
 ];
 
-export const initialCustomers: Customer[] = customerNames.map((name, index) => ({
+function createCustomers(anchor: Date): Customer[] {
+  return customerNames.map((name, index) => ({
   id: `cus-${String(index + 1).padStart(3, "0")}`,
   name,
   phone: `+91 90000 ${String(10001 + index).slice(-5)}`,
   email: `${name.toLowerCase().replaceAll(" ", ".")}@example.com`,
   address: `${index + 12}, ${localities[index % localities.length]}, Bengaluru`,
-  joinedAt: daysAgo(index >= 14 && index <= 21 ? 19 + (index % 10) : 120 + index * 3),
+  joinedAt: daysAgo(index >= 14 && index <= 21 ? 19 + (index % 10) : 120 + index * 3, anchor),
   notes: index % 7 === 0 ? "Prefers UPI payments" : "",
-}));
+  }));
+}
+
+export const initialCustomers: Customer[] = createCustomers(new Date());
 
 const productDefinitions: {
   name: string;
@@ -132,13 +136,15 @@ function createTransactions(anchor: Date): Transaction[] {
   let index = 0;
 
   for (let customerIndex = 0; customerIndex < 5; customerIndex += 1) {
-    for (let purchase = 0; purchase < 9; purchase += 1) {
-      transactions.push(createTransaction(index++, customerIndex, 4 + purchase * 4 + customerIndex, anchor));
+    for (let purchase = 0; purchase < 24; purchase += 1) {
+      const age = 2 + Math.floor((purchase * 82) / 24) + (customerIndex % 4);
+      transactions.push(createTransaction(index++, customerIndex, age, anchor));
     }
   }
   for (let customerIndex = 5; customerIndex < 14; customerIndex += 1) {
-    for (let purchase = 0; purchase < 6; purchase += 1) {
-      transactions.push(createTransaction(index++, customerIndex, 2 + purchase * 6 + (customerIndex % 4), anchor));
+    for (let purchase = 0; purchase < 30; purchase += 1) {
+      const age = 1 + Math.floor((purchase * 84) / 30) + (customerIndex % 4);
+      transactions.push(createTransaction(index++, customerIndex, age, anchor));
     }
   }
   for (let customerIndex = 14; customerIndex < 22; customerIndex += 1) {
@@ -159,10 +165,10 @@ const expenseDefinitions: {
   amount: number;
   vendor: string;
 }[] = [
-  { description: "Monthly shop rent", category: "Rent", amount: 28000, vendor: "Lakeview Properties" },
+  { description: "Monthly shop rent", category: "Rent", amount: 22000, vendor: "Lakeview Properties" },
   { description: "Electricity bill", category: "Utilities", amount: 4380, vendor: "BESCOM" },
   { description: "Water and waste collection", category: "Utilities", amount: 1150, vendor: "BBMP Services" },
-  { description: "Grocery restock delivery", category: "Supplies", amount: 6240, vendor: "South Market Wholesale" },
+  { description: "Monthly pest control service", category: "Maintenance", amount: 950, vendor: "CleanGuard Bengaluru" },
   { description: "Local delivery fuel", category: "Transport", amount: 1780, vendor: "IndianOil" },
   { description: "Storefront signboard repair", category: "Maintenance", amount: 2350, vendor: "City Sign Works" },
   { description: "Festival WhatsApp promotion", category: "Marketing", amount: 3200, vendor: "LocalReach Studio" },
@@ -173,14 +179,14 @@ const expenseDefinitions: {
   { description: "Paper bags and receipt rolls", category: "Supplies", amount: 2140, vendor: "PackRight Bengaluru" },
   { description: "Neighbourhood flyer printing", category: "Marketing", amount: 1450, vendor: "Corner Print House" },
   { description: "Electricity bill", category: "Utilities", amount: 3910, vendor: "BESCOM" },
-  { description: "Monthly shop rent", category: "Rent", amount: 28000, vendor: "Lakeview Properties" },
-  { description: "Bulk snacks restock delivery", category: "Supplies", amount: 3870, vendor: "South Market Wholesale" },
+  { description: "Monthly shop rent", category: "Rent", amount: 22000, vendor: "Lakeview Properties" },
+  { description: "Receipt paper and till rolls", category: "Supplies", amount: 870, vendor: "PackRight Bengaluru" },
   { description: "Delivery fuel", category: "Transport", amount: 1320, vendor: "IndianOil" },
   { description: "Shop shutter maintenance", category: "Maintenance", amount: 1760, vendor: "Ravi Repairs" },
   { description: "Internet and phone bill", category: "Utilities", amount: 1299, vendor: "Airtel Business" },
   { description: "Local festival display materials", category: "Marketing", amount: 2480, vendor: "Bright Banner Co." },
-  { description: "Monthly shop rent", category: "Rent", amount: 28000, vendor: "Lakeview Properties" },
-  { description: "Household goods restock", category: "Supplies", amount: 5140, vendor: "South Market Wholesale" },
+  { description: "Monthly shop rent", category: "Rent", amount: 22000, vendor: "Lakeview Properties" },
+  { description: "Shopfront glass cleaning", category: "Maintenance", amount: 750, vendor: "Sparkle Local Services" },
   { description: "Water and waste collection", category: "Utilities", amount: 1080, vendor: "BBMP Services" },
   { description: "Delivery fuel", category: "Transport", amount: 1540, vendor: "IndianOil" },
 ];
@@ -218,14 +224,17 @@ function createCampaigns(anchor: Date): MarketingCampaign[] {
     ...campaign,
     id: `cmp-${String(index + 1).padStart(3, "0")}`,
     startDate: daysAgo(campaign.daysAgo, anchor),
-    endDate: daysAgo(campaign.daysAgo - (index % 2 === 0 ? 5 : 3), anchor),
+    endDate:
+      campaign.status === "active"
+        ? daysAgo(-5, anchor)
+        : daysAgo(campaign.daysAgo - (index % 2 === 0 ? 5 : 3), anchor),
   }));
 }
 
 export function createDemoData(anchor = new Date()): DemoData {
   return {
     asOf: anchor.toISOString(),
-    customers: initialCustomers,
+    customers: createCustomers(anchor),
     products: initialProducts,
     transactions: createTransactions(anchor),
     expenses: createExpenses(anchor),

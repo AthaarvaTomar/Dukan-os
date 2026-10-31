@@ -12,6 +12,7 @@ function isDemoData(value: unknown): value is DemoData {
   return (
     isRecord(value) &&
     typeof value.asOf === "string" &&
+    Number.isFinite(Date.parse(value.asOf)) &&
     COLLECTIONS.every(
       (collection) =>
         Array.isArray(value[collection]) &&

@@ -54,8 +54,12 @@ export function bestSellingProducts(
   limit = 5,
 ): BestSellingProduct[] {
   const sales = new Map<string, { quantitySold: number; revenue: number }>();
+  const productIds = new Set(products.map((product) => product.id));
   for (const transaction of transactions) {
     for (const item of transaction.items) {
+      if (!productIds.has(item.productId)) {
+        throw new Error(`Transaction ${transaction.id} references an unknown product.`);
+      }
       const current = sales.get(item.productId) ?? { quantitySold: 0, revenue: 0 };
       current.quantitySold += item.quantity;
       current.revenue += item.unitPrice * item.quantity;
@@ -102,7 +106,9 @@ export function customerSpending(
 
   for (const transaction of transactions) {
     const customer = spending.get(transaction.customerId);
-    if (!customer) continue;
+    if (!customer) {
+      throw new Error(`Transaction ${transaction.id} references an unknown customer.`);
+    }
     customer.transactionCount += 1;
     customer.totalSpent += transaction.totalAmount;
     if (!customer.firstPurchaseAt || transaction.date < customer.firstPurchaseAt) {
@@ -127,7 +133,7 @@ export function getCustomerSegment(
   spending: CustomerSpending,
   asOf = new Date(),
 ): CustomerWithSegment["segment"] {
-  if (spending.totalSpent >= 15_000) return "high-value";
+  if (spending.totalSpent >= 50_000) return "high-value";
   if (spending.transactionCount === 0) return "inactive";
   if (!spending.lastPurchaseAt) return "inactive";
 

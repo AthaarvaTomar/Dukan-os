@@ -92,6 +92,10 @@ test("demo data meets requested volume and relationship requirements", () => {
   assert.ok(data.transactions.length >= 100);
   assert.ok(data.expenses.length >= 20);
   assert.ok(data.campaigns.length >= 5);
+  assert.ok(data.campaigns.every((campaign) => new Date(campaign.startDate) <= new Date(campaign.endDate)));
+  assert.ok(data.campaigns.some((campaign) =>
+    campaign.status === "active" && new Date(campaign.endDate) > anchor,
+  ));
   assertDemoDataIntegrity(data);
   assert.ok(data.transactions.every((entry) => data.customers.some((customer) => customer.id === entry.customerId)));
   assert.ok(data.transactions.every((entry) =>
@@ -133,6 +137,10 @@ test("best-selling products aggregate item quantities and revenue", () => {
   assert.equal(best[0].revenue, 300);
   assert.equal(best.length, 2);
   assert.deepEqual(bestSellingProducts(products, transactions, 0), []);
+  assert.throws(
+    () => bestSellingProducts(products, [{ ...transactions[0], items: [{ ...transactions[0].items[0], productId: "missing" }] }]),
+    /unknown product/,
+  );
 });
 
 test("customer spending and segments reflect purchase history", () => {
@@ -144,13 +152,17 @@ test("customer spending and segments reflect purchase history", () => {
   assert.equal(spending[0].firstPurchaseAt, "2026-10-30T12:00:00.000Z");
   assert.equal(spending[0].lastPurchaseAt, "2026-10-31T12:00:00.000Z");
   assert.equal(transactionCountForCustomer("cus-1", transactions), 2);
+  assert.throws(
+    () => customerSpending(customers, [{ ...transactions[0], customerId: "missing" }]),
+    /unknown customer/,
+  );
 
   const bySegment: CustomerSpending = {
     customerId: "test",
     customerName: "Test customer",
     transactionCount: 1,
-    totalSpent: 15_000,
-    averageOrderValue: 15_000,
+    totalSpent: 50_000,
+    averageOrderValue: 50_000,
     firstPurchaseAt: "2026-10-30T12:00:00.000Z",
     lastPurchaseAt: "2026-10-30T12:00:00.000Z",
   };
