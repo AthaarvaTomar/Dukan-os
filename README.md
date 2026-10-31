@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DukaanOS
 
-## Getting Started
+DukaanOS is a responsive workspace foundation for small-business owners. This first iteration includes the shared dashboard layout, navigation, a sample overview, and placeholders for the upcoming modules.
 
-First, run the development server:
+The demo workspace uses fictional records for Sharma General Store. Its dashboard totals and chart are calculated from the same demo transactions and expenses that the data layer exposes.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Page | Route |
+| --- | --- |
+| Overview | `/` |
+| AI Assistant | `/ai-assistant` |
+| Customers | `/customers` |
+| Marketing Campaigns | `/marketing` |
+| Inventory | `/inventory` |
+| Business Insights | `/insights` |
+| Settings | `/settings` |
 
-## Learn More
+The module routes intentionally use placeholders until their features are implemented.
 
-To learn more about Next.js, take a look at the following resources:
+## Project structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+app/
+  (dashboard)/      Dashboard routes and shared layout
+components/
+  dashboard/        Sidebar, shell, chart, and module placeholder
+  ui/               shadcn/ui-style primitives
+lib/
+  demo-data/        Typed demo entities, seeded records, analytics, validation, and local storage
+  navigation.ts     Shared route labels and icons
+  utils.ts          Shared class-name helper
+tests/
+  demo-data.test.ts Calculation, segmentation, inventory, and integrity tests
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Stack
 
-## Deploy on Vercel
+- Next.js App Router, React, and TypeScript
+- Tailwind CSS 4
+- shadcn/ui component conventions
+- Lucide React, Recharts, and Sonner
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Demo data
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The seed includes 34 customers, 24 products, 127 transactions, 24 expenses, and 6 marketing campaigns. Purchase dates are generated within the last 90 days. Transaction items keep the product price and cost at the time of sale, so revenue and estimated profit remain based on transaction history.
+
+Customer segments are derived from purchases: high-value customers have spent at least ₹15,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
+
+The `useDemoStore` hook provides typed create/update/delete helpers for customer, product, transaction, expense, and campaign records. It saves updates to browser local storage and validates transaction references before saving. Local data can be reset with the hook's `reset` method.
+
+Run the data tests with:
+
+```bash
+npm test
+```
