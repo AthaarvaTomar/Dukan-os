@@ -131,3 +131,14 @@ export interface DailyRevenue {
   revenue: number;
   transactions: number;
 }
+
+export type DashboardPeriod = "daily" | "weekly" | "monthly";
+
+export interface DashboardTrendPoint {
+  date: string;
+  label: string;
+  revenue: number;
+  transactions: number;
+  estimatedProfit: number;
+  newCustomers: number;
+}

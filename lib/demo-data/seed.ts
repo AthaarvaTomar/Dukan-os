@@ -22,7 +22,7 @@ function daysAgo(days: number, anchor = new Date()): string {
 const customerNames = [
   "Ananya Kapoor", "Rohan Verma", "Meera Shah", "Ishaan Khanna", "Kavya Iyer",
   "Arjun Nair", "Priya Menon", "Vivaan Joshi", "Diya Desai", "Kabir Bhatia",
-  "Sana Qureshi", "Aditya Rao", "Nisha Kulkarni", "Rahul Chawla", "Tara Mukherjee",
+  "Ria Singh", "Aditya Rao", "Nisha Kulkarni", "Rahul Chawla", "Tara Mukherjee",
   "Dev Malhotra", "Aisha Sethi", "Neel Banerjee", "Mira Reddy", "Yash Patil",
   "Ira Saxena", "Kunal Das", "Pooja Pillai", "Reyansh Ghosh", "Simran Kaur",
   "Aarav Kulkarni", "Zoya Mirza", "Dhruv Sinha", "Ritika Bose", "Om Prakash",

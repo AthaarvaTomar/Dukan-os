@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+import { CustomersDashboard } from "@/components/dashboard/customers-dashboard";
 
 export const metadata: Metadata = { title: "Customers" };
 
 export default function CustomersPage() {
-  return <ModulePlaceholder href="/customers" />;
+  return <CustomersDashboard />;
 }

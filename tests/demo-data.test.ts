@@ -4,6 +4,7 @@ import {
   averageOrderValue,
   bestSellingProducts,
   customerSpending,
+  dashboardTrend,
   dailyRevenue,
   estimatedProfit,
   getCustomerSegment,
@@ -35,6 +36,7 @@ import {
   SarvamApiError,
 } from "../lib/assistant/sarvam.ts";
 import { POST as assistantPost } from "../app/api/assistant/route.ts";
+import { GET as demoDataGet } from "../app/api/demo-data/route.ts";
 import type {
   Customer,
   CustomerSpending,
@@ -231,6 +233,36 @@ test("daily revenue includes every requested day and excludes out-of-range sales
   assert.deepEqual(dailyRevenue(transactions, 0, anchor), []);
 });
 
+test("dashboard trend groups revenue, transactions, profit, and customer growth by interval", () => {
+  const daily = dashboardTrend(fixture, "daily", 2, anchor);
+  assert.deepEqual(daily, [
+    {
+      date: "2026-10-30",
+      label: "30 Oct",
+      revenue: 200,
+      transactions: 1,
+      estimatedProfit: 70,
+      newCustomers: 0,
+    },
+    {
+      date: "2026-10-31",
+      label: "31 Oct",
+      revenue: 195,
+      transactions: 2,
+      estimatedProfit: 45,
+      newCustomers: 0,
+    },
+  ]);
+  const weekly = dashboardTrend(fixture, "weekly", 2, anchor);
+  assert.equal(weekly[1].date, "2026-10-26");
+  assert.equal(weekly[1].revenue, 395);
+  assert.equal(weekly[1].transactions, 3);
+  assert.equal(weekly[1].estimatedProfit, 115);
+  const monthly = dashboardTrend(fixture, "monthly", 1, anchor);
+  assert.equal(monthly[0].date, "2026-10-01");
+  assert.equal(monthly[0].revenue, 395);
+});
+
 test("integrity checks reject dangling customer and product references", () => {
   assert.throws(
     () => assertDemoDataIntegrity({ ...fixture, transactions: [{ ...transactions[0], customerId: "missing" }] }),
@@ -301,6 +333,17 @@ test("valid demo records persist and reload from local storage", () => {
       Reflect.deleteProperty(globalThis, "window");
     }
   }
+});
+
+test("demo data API returns the current server dataset without caching", async () => {
+  const response = demoDataGet();
+  const payload = await response.json() as DemoData;
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  assert.ok(payload.customers.length >= 30);
+  assert.ok(payload.products.length >= 20);
+  assert.ok(payload.transactions.length >= 100);
+  assertDemoDataIntegrity(payload);
 });
 
 test("classifies today's sales in Hindi and phrases the real result", async () => {

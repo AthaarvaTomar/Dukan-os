@@ -3,7 +3,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 import {
   commitDemoData,
+  getDemoDataLoadError,
+  getDemoDataLoadStatus,
   getDemoDataSnapshot,
+  getServerDemoDataLoadStatus,
   getServerDemoDataSnapshot,
   resetDemoData,
   subscribeToDemoData,
@@ -26,6 +29,16 @@ export function useDemoStore() {
     subscribeToDemoData,
     getDemoDataSnapshot,
     getServerDemoDataSnapshot,
+  );
+  const status = useSyncExternalStore(
+    subscribeToDemoData,
+    getDemoDataLoadStatus,
+    getServerDemoDataLoadStatus,
+  );
+  const error = useSyncExternalStore(
+    subscribeToDemoData,
+    getDemoDataLoadError,
+    () => null,
   );
 
   const commit = useCallback(
@@ -83,6 +96,8 @@ export function useDemoStore() {
 
   return {
     data,
+    status,
+    error,
     upsertCustomer,
     upsertProduct,
     upsertTransaction,

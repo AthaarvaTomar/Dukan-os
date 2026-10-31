@@ -4,6 +4,8 @@ import type {
   CustomerSpending,
   CustomerWithSegment,
   DemoData,
+  DashboardPeriod,
+  DashboardTrendPoint,
   DailyRevenue,
   InventoryStatus,
   InventorySummary,
@@ -225,6 +227,92 @@ export function dailyRevenue(
   }
 
   return [...totals.values()];
+}
+
+function startOfUtcWeek(date: Date): number {
+  const day = startOfUtcDay(date);
+  const weekday = new Date(day).getUTCDay();
+  return day - ((weekday + 6) % 7) * DAY_IN_MS;
+}
+
+function monthStart(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 12));
+}
+
+function trendBucket(date: Date, period: DashboardPeriod): string {
+  if (period === "daily") return new Date(startOfUtcDay(date)).toISOString().slice(0, 10);
+  if (period === "weekly") return new Date(startOfUtcWeek(date)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
+
+function trendLabel(bucket: string, period: DashboardPeriod): string {
+  const date = new Date(`${bucket}T12:00:00.000Z`);
+  if (period === "daily") {
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
+  }
+  if (period === "weekly") {
+    return `Week of ${new Intl.DateTimeFormat("en-IN", {
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(date)}`;
+  }
+  return new Intl.DateTimeFormat("en-IN", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date);
+}
+
+export function dashboardTrend(
+  data: DemoData,
+  period: DashboardPeriod,
+  periods: number,
+  asOf = new Date(data.asOf),
+): DashboardTrendPoint[] {
+  const safePeriods = Math.max(0, Math.floor(periods));
+  const buckets = new Map<string, { transactions: Transaction[]; expenses: DemoData["expenses"]; newCustomers: number }>();
+  const today = new Date(startOfUtcDay(asOf));
+  let latestBucket: Date;
+
+  if (period === "weekly") {
+    latestBucket = new Date(startOfUtcWeek(today));
+  } else if (period === "monthly") {
+    latestBucket = monthStart(today);
+  } else {
+    latestBucket = today;
+  }
+
+  for (let offset = safePeriods - 1; offset >= 0; offset -= 1) {
+    const bucketDate = new Date(latestBucket);
+    if (period === "daily") bucketDate.setUTCDate(bucketDate.getUTCDate() - offset);
+    if (period === "weekly") bucketDate.setUTCDate(bucketDate.getUTCDate() - offset * 7);
+    if (period === "monthly") bucketDate.setUTCMonth(bucketDate.getUTCMonth() - offset);
+    const key = trendBucket(bucketDate, period);
+    buckets.set(key, { transactions: [], expenses: [], newCustomers: 0 });
+  }
+
+  for (const transaction of data.transactions) {
+    const key = trendBucket(new Date(transaction.date), period);
+    buckets.get(key)?.transactions.push(transaction);
+  }
+  for (const expense of data.expenses) {
+    const key = trendBucket(new Date(expense.date), period);
+    buckets.get(key)?.expenses.push(expense);
+  }
+  for (const customer of data.customers) {
+    const key = trendBucket(new Date(customer.joinedAt), period);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.newCustomers += 1;
+  }
+
+  return [...buckets.entries()].map(([date, bucket]) => ({
+    date,
+    label: trendLabel(date, period),
+    revenue: totalRevenue(bucket.transactions),
+    transactions: totalTransactions(bucket.transactions),
+    estimatedProfit: estimatedProfit({
+      transactions: bucket.transactions,
+      expenses: bucket.expenses,
+    }),
+    newCustomers: bucket.newCustomers,
+  }));
 }
 
 export function transactionCountForCustomer(

@@ -8,7 +8,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isDemoData(value: unknown): value is DemoData {
+export function isDemoData(value: unknown): value is DemoData {
   return (
     isRecord(value) &&
     typeof value.asOf === "string" &&
