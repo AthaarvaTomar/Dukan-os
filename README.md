@@ -63,3 +63,9 @@ Run the data tests with:
 ```bash
 npm test
 ```
+
+## AI assistant backend
+
+The `POST /api/assistant` endpoint accepts `{ "message": "...", "data": <current DemoData> }`. The browser must send its current dataset because the server cannot read browser local storage. The response includes `{ reply, intent, data }`, with analytics results available for future chart and table views.
+
+Set `SARVAM_API_KEY` in a local `.env.local` file (see [.env.example](./.env.example)). The key is used only by the server. The integration uses the [Sarvam Chat Completions API](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1), model `sarvam-105b`, the `Authorization: Bearer` header, and the `api-subscription-key` header. It classifies supported questions, runs the existing demo analytics, then asks Sarvam to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; requests with missing credentials, provider failures, or timeouts return a friendly `error` response with HTTP 200.

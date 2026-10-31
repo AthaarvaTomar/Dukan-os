@@ -23,6 +23,18 @@ import {
   saveDemoData,
   upsertById,
 } from "../lib/demo-data/storage.ts";
+import {
+  deterministicIntentFallback,
+  parseClassifiedIntent,
+} from "../lib/assistant/intents.ts";
+import { processAssistantMessage } from "../lib/assistant/service.ts";
+import {
+  callSarvam,
+  SARVAM_CHAT_COMPLETIONS_URL,
+  SARVAM_CHAT_MODEL,
+  SarvamApiError,
+} from "../lib/assistant/sarvam.ts";
+import { POST as assistantPost } from "../app/api/assistant/route.ts";
 import type {
   Customer,
   CustomerSpending,
@@ -231,6 +243,26 @@ test("integrity checks reject dangling customer and product references", () => {
     }),
     /unknown product/,
   );
+  assert.throws(
+    () => assertDemoDataIntegrity({
+      ...fixture,
+      transactions: [],
+      campaigns: [{
+        id: "cmp-invalid",
+        name: "Invalid dates",
+        channel: "WhatsApp",
+        status: "draft",
+        startDate: "2026-10-31T12:00:00.000Z",
+        endDate: "2026-10-30T12:00:00.000Z",
+        budget: 0,
+        audienceSize: 0,
+        sentCount: 0,
+        conversions: 0,
+        revenue: 0,
+      }],
+    }),
+    /ends before it starts/,
+  );
 });
 
 test("record helpers add, update, and remove by id", () => {
@@ -268,5 +300,125 @@ test("valid demo records persist and reload from local storage", () => {
     } else {
       Reflect.deleteProperty(globalThis, "window");
     }
+  }
+});
+
+test("classifies today's sales in Hindi and phrases the real result", async () => {
+  const prompts: string[] = [];
+  const result = await processAssistantMessage("Aaj meri total sales kitni hui?", fixture, {
+    complete: async (messages) => {
+      prompts.push(messages[0].content);
+      return prompts.length === 1
+        ? '{"intent":"get_sales","params":{"period":"today"}}'
+        : "Aaj ki sales ₹195 rahi.";
+    },
+  });
+
+  assert.equal(result.intent, "get_sales");
+  assert.equal(result.reply, "Aaj ki sales ₹195 rahi.");
+  assert.equal(result.data?.revenue, 195);
+  assert.match(prompts[1], /SAME language/);
+  assert.match(prompts[1], /Never invent/);
+});
+
+test("classifies reorder requests and uses deterministic fallback for malformed model JSON", async () => {
+  const result = await processAssistantMessage("Which products should I reorder tomorrow?", fixture, {
+    complete: async (messages) =>
+      messages[0].content.includes("intent classifier")
+        ? '{"intent":"reorder_suggestions","params":{}}'
+        : "Tea is low on stock and Water is out of stock.",
+  });
+
+  assert.equal(result.intent, "reorder_suggestions");
+  assert.deepEqual(
+    (result.data?.products as Product[]).map((product) => product.id),
+    ["prd-2", "prd-3"],
+  );
+  assert.deepEqual(
+    parseClassifiedIntent("```json\n{ definitely not valid json }\n```", "Aaj meri total sales kitni hui?"),
+    { intent: "get_sales", params: { period: "today" } },
+  );
+  assert.deepEqual(parseClassifiedIntent("{ definitely not valid json }", "nonsense"), {
+    intent: "unknown",
+    params: {},
+  });
+  assert.deepEqual(deterministicIntentFallback("Which products should I reorder tomorrow?"), {
+    intent: "reorder_suggestions",
+    params: {},
+  });
+});
+
+test("Sarvam client uses the documented endpoint, model, and authentication headers", async () => {
+  let requestUrl = "";
+  let requestHeaders: Headers | undefined;
+  let requestBody: Record<string, unknown> | undefined;
+  const result = await callSarvam(
+    [{ role: "user", content: "Hello" }],
+    {
+      apiKey: "sk_test_key",
+      fetcher: async (input, init) => {
+        requestUrl = String(input);
+        requestHeaders = new Headers(init?.headers);
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ choices: [{ message: { content: "Namaste" } }] });
+      },
+    },
+  );
+
+  assert.equal(result, "Namaste");
+  assert.equal(requestUrl, SARVAM_CHAT_COMPLETIONS_URL);
+  assert.equal(requestHeaders?.get("authorization"), "Bearer sk_test_key");
+  assert.equal(requestHeaders?.get("api-subscription-key"), "sk_test_key");
+  assert.equal(requestBody?.model, SARVAM_CHAT_MODEL);
+  await assert.rejects(
+    () => callSarvam([{ role: "user", content: "Hello" }], { apiKey: "" }),
+    (error: unknown) => error instanceof SarvamApiError && error.kind === "missing_key",
+  );
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(
+    () => callSarvam(
+      [{ role: "user", content: "Hello" }],
+      {
+        apiKey: "sk_test_key",
+        signal: aborted.signal,
+        fetcher: async () => {
+          throw new DOMException("Aborted", "AbortError");
+        },
+      },
+    ),
+    (error: unknown) => error instanceof SarvamApiError && error.kind === "timeout",
+  );
+});
+
+test("assistant route returns friendly HTTP 200 errors when Sarvam is not configured or unavailable", async () => {
+  const previousKey = process.env.SARVAM_API_KEY;
+  const previousFetch = globalThis.fetch;
+  const request = () =>
+    new Request("http://localhost/api/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "How much did I sell today?", data: fixture }),
+    });
+
+  try {
+    delete process.env.SARVAM_API_KEY;
+    const missingKeyResponse = await assistantPost(request());
+    const missingKeyBody = await missingKeyResponse.json();
+    assert.equal(missingKeyResponse.status, 200);
+    assert.equal(missingKeyBody.intent, "error");
+    assert.match(missingKeyBody.reply, /not configured/);
+
+    process.env.SARVAM_API_KEY = "sk_test_key";
+    globalThis.fetch = async () => Response.json({ error: "unavailable" }, { status: 503 });
+    const failedRequestResponse = await assistantPost(request());
+    const failedRequestBody = await failedRequestResponse.json();
+    assert.equal(failedRequestResponse.status, 200);
+    assert.equal(failedRequestBody.intent, "error");
+    assert.match(failedRequestBody.reply, /temporarily unavailable/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.SARVAM_API_KEY;
+    else process.env.SARVAM_API_KEY = previousKey;
   }
 });

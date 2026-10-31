@@ -33,13 +33,13 @@ export function assertDemoDataIntegrity(data: DemoData): void {
         throw new Error(`Transaction ${transaction.id} references an unknown product.`);
       }
     }
+  }
 
-    for (const campaign of data.campaigns) {
-      const startDate = Date.parse(campaign.startDate);
-      const endDate = Date.parse(campaign.endDate);
-      if (!Number.isFinite(startDate) || !Number.isFinite(endDate) || startDate > endDate) {
-        throw new Error(`Campaign ${campaign.id} has invalid dates or ends before it starts.`);
-      }
+  for (const campaign of data.campaigns) {
+    const startDate = Date.parse(campaign.startDate);
+    const endDate = Date.parse(campaign.endDate);
+    if (!Number.isFinite(startDate) || !Number.isFinite(endDate) || startDate > endDate) {
+      throw new Error(`Campaign ${campaign.id} has invalid dates or ends before it starts.`);
     }
   }
 }
