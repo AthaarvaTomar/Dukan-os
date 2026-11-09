@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useBusinessInfo } from "@/components/dashboard/business-context";
 import { useDemoStore } from "@/components/dashboard/use-demo-store";
 import {
   averageOrderValue,
@@ -115,6 +116,7 @@ export function OverviewLoading() {
 }
 
 export function OverviewDashboard() {
+  const { businessName } = useBusinessInfo();
   const { data, reset, status, error } = useDemoStore();
   const [period, setPeriod] = useState<DashboardPeriod>("daily");
   const [selectedMetric, setSelectedMetric] = useState<DashboardMetric>("revenue");
@@ -205,7 +207,7 @@ export function OverviewDashboard() {
         <p className="mt-2 text-sm leading-6 text-slate-600">
           {modelResult.error}
         </p>
-        <Button className="mt-5" onClick={reset}>Restore demo data</Button>
+        <Button className="mt-5" onClick={() => void reset()}>Retry loading data</Button>
       </section>
     );
   }
@@ -276,7 +278,7 @@ export function OverviewDashboard() {
         <div>
           <p className="mb-2 text-sm font-medium text-slate-500">{todayLabel}</p>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[30px]">
-            Sharma General Store
+            {businessName}
           </h1>
           <p className="mt-1.5 text-sm text-slate-500">
             Your business at a glance, powered by your store data.

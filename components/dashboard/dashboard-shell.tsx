@@ -1,13 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Bell, Menu, Store, X } from "lucide-react";
+import { Bell, LoaderCircle, LogOut, Menu, Store, X } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { BusinessProvider } from "@/components/dashboard/business-context";
+import { businessActions } from "@/lib/db/store";
 import { cn } from "@/lib/utils";
 import { getNavigationItem, navigationGroups } from "@/lib/navigation";
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join("");
+}
 
 function Brand() {
   return (
@@ -22,16 +33,37 @@ function Brand() {
   );
 }
 
-function MerchantProfile() {
+function MerchantProfile({
+  userName,
+  businessName,
+  onSignOut,
+  signingOut,
+}: {
+  userName: string;
+  businessName: string;
+  onSignOut: () => void;
+  signingOut: boolean;
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 text-sm font-semibold text-orange-950">
-        VS
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 text-sm font-semibold text-orange-950">
+          {initials(userName)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-white">{businessName}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-400">{userName}</p>
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-white">Sharma General Store</p>
-        <p className="mt-0.5 truncate text-xs text-slate-400">Vikram Sharma · Owner</p>
-      </div>
+      <button
+        type="button"
+        onClick={onSignOut}
+        disabled={signingOut}
+        className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-white/10 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+      >
+        {signingOut ? <LoaderCircle size={13} className="animate-spin" /> : <LogOut size={13} />}
+        Sign out
+      </button>
     </div>
   );
 }
@@ -39,9 +71,17 @@ function MerchantProfile() {
 function Sidebar({
   pathname,
   onNavigate,
+  userName,
+  businessName,
+  onSignOut,
+  signingOut,
 }: {
   pathname: string;
   onNavigate: () => void;
+  userName: string;
+  businessName: string;
+  onSignOut: () => void;
+  signingOut: boolean;
 }) {
   return (
     <div className="flex h-full flex-col bg-[#111a29] px-4 pb-4 pt-5">
@@ -107,17 +147,50 @@ function Sidebar({
           Your shop&apos;s home base, all in one place.
         </p>
       </div>
-      <MerchantProfile />
+      <MerchantProfile
+        userName={userName}
+        businessName={businessName}
+        onSignOut={onSignOut}
+        signingOut={signingOut}
+      />
     </div>
   );
 }
 
-export function DashboardShell({ children }: { children: ReactNode }) {
+export function DashboardShell({
+  children,
+  userName,
+  userEmail,
+  businessName,
+}: {
+  children: ReactNode;
+  userName: string;
+  userEmail: string;
+  businessName: string;
+}) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const activeItem = getNavigationItem(pathname);
 
+  const signOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      await businessActions.reset();
+      router.push("/login");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
+    <BusinessProvider value={{ businessName, userName, userEmail }}>
     <div className="flex min-h-screen bg-[#f7f8fa] text-slate-900">
       {sidebarOpen && (
         <button
@@ -133,7 +206,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <Sidebar pathname={pathname} onNavigate={() => setSidebarOpen(false)} />
+        <Sidebar
+          pathname={pathname}
+          onNavigate={() => setSidebarOpen(false)}
+          userName={userName}
+          businessName={businessName}
+          onSignOut={() => void signOut()}
+          signingOut={signingOut}
+        />
       </aside>
 
       <div className="min-w-0 flex-1">
@@ -181,14 +261,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <div className="hidden h-8 w-px bg-slate-200 sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 text-xs font-semibold text-orange-950 sm:hidden">
-                VS
+                {initials(userName)}
               </div>
               <div className="hidden text-right sm:block">
-                <p className="text-xs font-semibold text-slate-800">Vikram Sharma</p>
-                <p className="mt-0.5 text-[11px] text-slate-500">Store owner</p>
+                <p className="text-xs font-semibold text-slate-800">{userName}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">{userEmail}</p>
               </div>
               <div className="hidden h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 text-xs font-semibold text-orange-950 sm:flex">
-                VS
+                {initials(userName)}
               </div>
             </div>
           </div>
@@ -196,5 +276,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <main className="px-4 py-7 sm:px-6 sm:py-8 lg:px-9 lg:py-9">{children}</main>
       </div>
     </div>
+    </BusinessProvider>
   );
 }

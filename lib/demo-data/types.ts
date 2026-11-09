@@ -16,7 +16,7 @@ export type ExpenseCategory =
   | "Transport"
   | "Marketing"
   | "Maintenance";
-export type CampaignStatus = "draft" | "scheduled" | "active" | "completed";
+export type CampaignStatus = "draft" | "scheduled" | "active" | "completed" | "simulated";
 
 export interface Customer {
   id: string;
@@ -38,6 +38,40 @@ export interface Product {
   costPrice: number;
   stock: number;
   reorderLevel: number;
+  supplierName?: string;
+  lastUpdatedAt?: string;
+}
+
+export type StockOperation = "stock-in" | "stock-out" | "adjustment";
+
+export interface InventoryMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  operation: StockOperation;
+  quantityChanged: number;
+  previousStock: number;
+  newStock: number;
+  reason: string;
+  createdAt: string;
+}
+
+export interface SupplierOrderItem {
+  productId: string;
+  productName: string;
+  currentStock: number;
+  reorderQuantity: number;
+  purchaseCost: number;
+  estimatedAmount: number;
+}
+
+export interface SupplierOrderDraft {
+  id: string;
+  supplierName: string;
+  status: "draft" | "approved";
+  createdAt: string;
+  approvedAt?: string;
+  items: SupplierOrderItem[];
 }
 
 export interface TransactionItem {
@@ -91,6 +125,8 @@ export interface DemoData {
   transactions: Transaction[];
   expenses: Expense[];
   campaigns: MarketingCampaign[];
+  inventoryMovements?: InventoryMovement[];
+  supplierOrders?: SupplierOrderDraft[];
 }
 
 export interface CustomerSpending {

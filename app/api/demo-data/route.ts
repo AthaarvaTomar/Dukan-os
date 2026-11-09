@@ -1,8 +1,8 @@
 import { assertDemoDataIntegrity } from "@/lib/demo-data/integrity";
-import { createDemoData } from "@/lib/demo-data/seed";
+import { getServerDemoData } from "@/lib/demo-data/server-store";
 
 export function GET() {
-  const data = createDemoData();
+  const data = getServerDemoData();
   assertDemoDataIntegrity(data);
   return Response.json(data, {
     headers: {
