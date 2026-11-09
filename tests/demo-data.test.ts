@@ -29,7 +29,8 @@ import {
   deterministicIntentFallback,
   parseClassifiedIntent,
 } from "../lib/assistant/intents.ts";
-import { processAssistantMessage } from "../lib/assistant/service.ts";
+import { getAiProvider, processAssistantMessage } from "../lib/assistant/service.ts";
+import { callGemini, GeminiApiError } from "../lib/assistant/gemini.ts";
 import {
   callSarvam,
   SARVAM_CHAT_COMPLETIONS_URL,
@@ -426,12 +427,12 @@ test("classifies today's sales in Hindi and phrases the real result", async () =
       prompts.push(messages[0].content);
       return prompts.length === 1
         ? '{"intent":"get_sales","params":{"period":"today"}}'
-        : "Aaj ki sales ₹195 rahi.";
+        : "Aaj ki sales â‚¹195 rahi.";
     },
   });
 
   assert.equal(result.intent, "get_sales");
-  assert.equal(result.reply, "Aaj ki sales ₹195 rahi.");
+  assert.equal(result.reply, "Aaj ki sales â‚¹195 rahi.");
   assert.equal(result.data?.revenue, 195);
   assert.match(prompts[1], /SAME language/);
   assert.match(prompts[1], /Never invent/);
@@ -618,6 +619,239 @@ test("assistant route returns friendly HTTP 200 errors when Sarvam is not config
     else process.env.SARVAM_API_KEY = previousKey;
   }
 });
+
+test("Gemini client uses endpoint with model from env, x-goog-api-key header, and handles 429 retry", async () => {
+  let requestUrl = "";
+  let requestHeaders: Headers | undefined;
+  let requestBody: Record<string, unknown> | undefined;
+  let callCount = 0;
+
+  process.env.GEMINI_MODEL = "gemini-2.5-flash";
+
+  // Test successful call with classification JSON responseMimeType
+  const result = await callGemini(
+    [
+      { role: "system", content: "You are an intent classifier." },
+      { role: "user", content: "sales today" },
+    ],
+    {
+      apiKey: "test_gemini_key",
+      responseMimeType: "application/json",
+      fetcher: async (input, init) => {
+        callCount += 1;
+        requestUrl = String(input);
+        requestHeaders = new Headers(init?.headers);
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: "{\"intent\":\"get_sales\",\"params\":{\"period\":\"today\"}}" }],
+              },
+            },
+          ],
+        });
+      },
+    },
+  );
+
+  assert.equal(result, "{\"intent\":\"get_sales\",\"params\":{\"period\":\"today\"}}");
+  assert.equal(callCount, 1);
+  assert.equal(
+    requestUrl,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+  );
+  assert.equal(requestHeaders?.get("x-goog-api-key"), "test_gemini_key");
+  const genConfig = requestBody?.generationConfig as Record<string, unknown>;
+  assert.equal(genConfig?.responseMimeType, "application/json");
+  assert.equal(genConfig?.temperature, 0);
+
+  // Missing key test
+  await assert.rejects(
+    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "" }),
+    (error: unknown) => error instanceof GeminiApiError && error.kind === "missing_key",
+  );
+
+  // Missing model test
+  const savedModel = process.env.GEMINI_MODEL;
+  delete process.env.GEMINI_MODEL;
+  await assert.rejects(
+    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "key", model: "" }),
+    (error: unknown) => error instanceof GeminiApiError && error.kind === "missing_key",
+  );
+  process.env.GEMINI_MODEL = savedModel;
+
+  // 429 retry test
+  let attempt = 0;
+  const retryResult = await callGemini(
+    [{ role: "user", content: "hello" }],
+    {
+      apiKey: "test_gemini_key",
+      fetcher: async () => {
+        attempt += 1;
+        if (attempt === 1) {
+          return new Response("Too Many Requests", { status: 429 });
+        }
+        return Response.json({
+          candidates: [{ content: { parts: [{ text: "retry successful" }] } }],
+        });
+      },
+    },
+  );
+  assert.equal(attempt, 2);
+  assert.equal(retryResult, "retry successful");
+
+  // Timeout test
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(
+    () =>
+      callGemini([{ role: "user", content: "hello" }], {
+        apiKey: "test_gemini_key",
+        signal: aborted.signal,
+        fetcher: async () => {
+          throw new DOMException("Aborted", "AbortError");
+        },
+      }),
+    (error: unknown) => error instanceof GeminiApiError && error.kind === "timeout",
+  );
+});
+
+test("provider switch logic respects AI_PROVIDER env var and defaults correctly", () => {
+  const origProvider = process.env.AI_PROVIDER;
+  const origGeminiKey = process.env.GEMINI_API_KEY;
+  const origSarvamKey = process.env.SARVAM_API_KEY;
+
+  try {
+    process.env.AI_PROVIDER = "sarvam";
+    assert.equal(getAiProvider(), "sarvam");
+
+    process.env.AI_PROVIDER = "gemini";
+    assert.equal(getAiProvider(), "gemini");
+
+    delete process.env.AI_PROVIDER;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.SARVAM_API_KEY;
+    assert.equal(getAiProvider(), "gemini"); // default
+
+    process.env.SARVAM_API_KEY = "key";
+    assert.equal(getAiProvider(), "sarvam"); // fallback if only sarvam configured
+
+    process.env.GEMINI_API_KEY = "gkey";
+    assert.equal(getAiProvider(), "gemini"); // prefer gemini if both present
+  } finally {
+    if (origProvider) process.env.AI_PROVIDER = origProvider;
+    else delete process.env.AI_PROVIDER;
+    if (origGeminiKey) process.env.GEMINI_API_KEY = origGeminiKey;
+    else delete process.env.GEMINI_API_KEY;
+    if (origSarvamKey) process.env.SARVAM_API_KEY = origSarvamKey;
+    else delete process.env.SARVAM_API_KEY;
+  }
+});
+
+
+
+
+test("assistant route returns friendly HTTP 200 errors when Gemini is not configured or unavailable", async () => {
+  const origProvider = process.env.AI_PROVIDER;
+  const origKey = process.env.GEMINI_API_KEY;
+  const origSarvamKey = process.env.SARVAM_API_KEY;
+  const previousFetch = globalThis.fetch;
+
+  process.env.AI_PROVIDER = "gemini";
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.SARVAM_API_KEY;
+
+  const request = () =>
+    new Request("http://localhost/api/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "How much did I sell today?", data: fixture }),
+    });
+
+  try {
+    const missingKeyResponse = await assistantPost(request());
+    const missingKeyBody = await missingKeyResponse.json();
+    assert.equal(missingKeyResponse.status, 200);
+    assert.equal(missingKeyBody.intent, "error");
+    assert.match(missingKeyBody.reply, /not configured/);
+
+    process.env.GEMINI_API_KEY = "test_gemini_key";
+    process.env.GEMINI_MODEL = "gemini-2.5-flash";
+    globalThis.fetch = async () => Response.json({ error: "service unavailable" }, { status: 503 });
+    const failedRequestResponse = await assistantPost(request());
+    const failedRequestBody = await failedRequestResponse.json();
+    assert.equal(failedRequestResponse.status, 200);
+    assert.equal(failedRequestBody.intent, "error");
+    assert.match(failedRequestBody.reply, /temporarily unavailable/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (origProvider) process.env.AI_PROVIDER = origProvider;
+    else delete process.env.AI_PROVIDER;
+    if (origKey) process.env.GEMINI_API_KEY = origKey;
+    else delete process.env.GEMINI_API_KEY;
+    if (origSarvamKey) process.env.SARVAM_API_KEY = origSarvamKey;
+    else delete process.env.SARVAM_API_KEY;
+  }
+});
+
+test("four core assistant queries are classified and processed with Gemini pipeline", async () => {
+  const dataset = createDemoData(anchor);
+
+  const testQueries = [
+    {
+      query: "aaj ki bikri kitni hui",
+      expectedIntent: "get_sales",
+      mockClassification: "{\"intent\":\"get_sales\",\"params\":{\"period\":\"today\"}}",
+      mockReply: "Aaj aapki total bikri â‚¹195 hui hai.",
+    },
+    {
+      query: "which products are low on stock",
+      expectedIntent: "low_stock",
+      mockClassification: "{\"intent\":\"low_stock\",\"params\":{}}",
+      mockReply: "You currently have 5 products low on stock and 2 out of stock.",
+    },
+    {
+      query: "kitne customers inactive hai",
+      expectedIntent: "inactive_customers",
+      mockClassification: "{\"intent\":\"inactive_customers\",\"params\":{\"days\":45}}",
+      mockReply: "Pichle 45 dino mein 12 customers inactive rahe hain.",
+    },
+    {
+      query: "weekly report",
+      expectedIntent: "weekly_report",
+      mockClassification: "{\"intent\":\"weekly_report\",\"params\":{}}",
+      mockReply: "Is hafte ka total sales aur profit report taiyar hai.",
+    },
+  ];
+
+  for (const item of testQueries) {
+    // 1. Verify deterministic regex fallback works even with invalid/empty AI
+    const fallback = deterministicIntentFallback(item.query);
+    assert.equal(fallback.intent, item.expectedIntent);
+
+    // 2. Verify full Gemini assistant pipeline execution
+    let callStep = 0;
+    const mockCompletion = async () => {
+      callStep += 1;
+      if (callStep === 1) return item.mockClassification;
+      return item.mockReply;
+    };
+
+    const result = await processAssistantMessage(item.query, dataset, {
+      complete: mockCompletion,
+      provider: "gemini",
+    });
+
+    assert.equal(result.intent, item.expectedIntent);
+    assert.equal(result.reply, item.mockReply);
+    assert.ok(result.data !== null);
+  }
+});
+
+
+
+
 
 test("voice setup reports missing credentials without exposing the API key", async () => {
   const names = ["SARVAM_API_KEY", "SARVAM_ORG_ID", "SARVAM_WORKSPACE_ID", "SARVAM_APP_ID"] as const;

@@ -95,7 +95,7 @@ export function SalesOverviewChart({
           ))}
         </div>
       </div>
-      <div className="mt-6 [230px] w-full [250px]">
+      <div className="mt-6 h-[230px] w-full sm:h-[250px]">
         {!hasValues ? (
           <div className="flex h-full flex-col items-center justify-center rounded-xl bg-slate-50/70 text-center">
             <p className="text-sm font-medium text-slate-700">No activity for this view yet</p>

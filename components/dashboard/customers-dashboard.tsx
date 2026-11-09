@@ -90,7 +90,7 @@ export function CustomersDashboard() {
 
   if (status === "loading") {
     return (
-      <div className="mx-auto w-full max-w[1440px] animate-pulse space-y-7" role="status">
+      <div className="mx-auto w-full max-w-[1440px] animate-pulse space-y-7" role="status">
         <span className="sr-only">Loading customers…</span>
         <div className="h-10 w-56 rounded bg-slate-200" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -114,7 +114,7 @@ export function CustomersDashboard() {
   }
 
   return (
-    <div className="mx-auto w-full max-w[1440px] space-y-7">
+    <div className="mx-auto w-full max-w-[1440px] space-y-7">
       <section>
         <p className="mb-2 text-sm font-medium text-slate-500">Customer intelligence</p>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[30px]">
@@ -197,7 +197,7 @@ export function CustomersDashboard() {
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w[820px] text-left">
+              <table className="w-full min-w-[820px] text-left">
                 <thead className="bg-slate-50/80 text-xs font-medium text-slate-500">
                   <tr>
                     <th scope="col" className="px-6 py-3.5">Customer</th>

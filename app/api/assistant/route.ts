@@ -6,6 +6,7 @@ import { errorAssistantResult, processAssistantMessage } from "@/lib/assistant/s
 import { fetchBusinessData } from "@/lib/db/queries";
 import { resolveServerBusiness } from "@/lib/db/voice-campaigns";
 import { SarvamApiError } from "@/lib/assistant/sarvam";
+import { GeminiApiError } from "@/lib/assistant/gemini";
 
 export const maxDuration = 60;
 
@@ -157,7 +158,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof SarvamApiError) {
+    if (error instanceof GeminiApiError || error instanceof SarvamApiError) {
       return NextResponse.json(errorAssistantResult(error.kind), { status: 200 });
     }
     if (timeoutSignal.aborted) {

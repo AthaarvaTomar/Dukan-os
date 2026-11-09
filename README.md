@@ -1,6 +1,6 @@
 # DukaanOS
 
-DukaanOS is a responsive workspace for small-business owners, with a shared dashboard, demo store data, and an AI assistant with text and optional Sarvam voice.
+DukaanOS is a responsive workspace for small-business owners, with a shared dashboard, demo store data, and an AI assistant (Gemini) with text chat, voice interface, and Supabase-backed authentication.
 
 The demo workspace uses fictional records for Sharma General Store. Its dashboard totals and chart are calculated from the same demo transactions and expenses that the data layer exposes.
 
@@ -12,6 +12,25 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the app.
+
+### Environment variables
+
+Copy `.env.example` to `.env.local` and fill in the values:
+
+```bash
+cp .env.example .env.local
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/) key — server only |
+| `GEMINI_MODEL` | Model name, e.g. `gemini-2.5-flash` |
+| `AI_PROVIDER` | `gemini` (default) or `sarvam` (optional legacy) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (safe for browser) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (safe for browser) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key — server only, never expose |
+| `SARVAM_API_KEY` | Optional: Sarvam Voice Agents API key |
+| `SARVAM_TOOL_API_TOKEN` | Optional: webhook bearer token for Sarvam voice tools |
 
 ## Routes
 
@@ -55,7 +74,7 @@ tests/
 
 The seed includes 34 customers, 24 products, 418 transactions, 24 expenses, and 6 marketing campaigns. Purchase dates are generated within the last 90 days. Transaction items keep the product price and cost at the time of sale, so revenue and estimated profit remain based on transaction history.
 
-Customer segments are derived from purchases: high-value customers have spent at least ₹50,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
+Customer segments are derived from purchases: high-value customers have spent at least â‚¹50,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
 
 The `useDemoStore` hook provides typed create/update/delete helpers for customer, product, transaction, expense, and campaign records. It saves updates to browser local storage and validates transaction references before saving. Local data can be reset with the hook's `reset` method.
 
@@ -77,15 +96,17 @@ npm test
 
 The `POST /api/assistant` endpoint accepts `{ "message": "...", "data": <current DemoData> }`. The browser sends its current dataset because the server cannot read browser local storage. The response includes `{ reply, intent, data }`, with analytics results available for future chart and table views.
 
-The text assistant uses the [Sarvam Chat Completions API](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1), model `sarvam-105b`, and a server-only API key. It classifies supported questions, runs the existing demo analytics, then asks Sarvam to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; missing credentials, provider failures, and timeouts return a friendly error response.
+The assistant is powered by **Gemini** (Sarvam legacy provider is optional). Set `GEMINI_API_KEY`, `GEMINI_MODEL` (e.g. `gemini-2.5-flash`), and optionally `AI_PROVIDER=gemini` (default) in `.env.local`.
+
+The API key is used only on the server. The integration classifies supported questions, runs the existing demo analytics, then asks the AI model to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; requests with missing credentials, provider failures, or timeouts return a friendly `error` response with HTTP 200.
 
 ## Sarvam Voice Agent setup
 
 The browser uses the official [`sarvam-conv-ai-sdk`](https://docs.sarvam.ai/voice-agents/deploy/sdks/web) web SDK (`ConversationAgent`, `BrowserAudioInterface`, and `InteractionType.CALL`). Its signed-URL request is proxied through `/api/sarvam/`; the Sarvam API key stays on the server and is never placed in browser code.
 
 1. Copy `.env.example` to `.env.local` if it is not already present. The checked-in `.env.example` contains placeholders only; `.env.local` is ignored by Git.
-2. In your Sarvam Voice Agents dashboard, open **Settings → API Key** and put that Voice Agents API key in `SARVAM_API_KEY`.
-3. Open the agent you intend to use and choose **Deploy with Code → Web SDK**. Copy the `org_id`, `workspace_id`, and `app_id` values shown in the SDK configuration into `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, and `SARVAM_APP_ID`, respectively. `app_id` is the ID of the voice agent, not a Chat Completions model ID.
+2. In your Sarvam Voice Agents dashboard, open **Settings â†’ API Key** and put that Voice Agents API key in `SARVAM_API_KEY`.
+3. Open the agent you intend to use and choose **Deploy with Code â†’ Web SDK**. Copy the `org_id`, `workspace_id`, and `app_id` values shown in the SDK configuration into `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, and `SARVAM_APP_ID`, respectively. `app_id` is the ID of the voice agent, not a Chat Completions model ID.
 4. Generate a long random token for `SARVAM_TOOL_API_TOKEN`, then configure the same value as a **Bearer token secret** in the Sarvam workspace. For example, generate a token locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Never put this token in browser code or a committed file.
 5. In the Sarvam agent builder, use the system instructions below, add the HTTPS API tools listed in the next section, and **commit an agent version**. The SDK cannot connect to an agent with no committed version.
 6. Restart `npm run dev`, allow microphone access when prompted, then click **Start voice**. Starting the assistant page does not open the microphone.
@@ -94,11 +115,11 @@ The voice agent's system instructions:
 
 > You are DukaanOS, an AI business assistant for Indian shopkeepers. Speak naturally in Hindi, English, or Hinglish. Answer using actual DukaanOS business data. Help merchants understand sales, customers, inventory, and profits. Keep answers short and practical. Never invent business figures. Ask for confirmation before making changes or executing campaigns.
 
-Add these campaign-specific rules after that prompt: for “Create personalized 15% discount messages for inactive customers” (or an equivalent request), call `campaign-draft`; report the returned eligible customer count, explain that each draft uses verified purchase/category/segment details where present, and ask the merchant to review the campaign in DukaanOS. Do not execute anything until the merchant explicitly approves using the review button. Approval records each message as simulated only. Never say a WhatsApp/SMS message was sent or delivered.
+Add these campaign-specific rules after that prompt: for â€œCreate personalized 15% discount messages for inactive customersâ€ (or an equivalent request), call `campaign-draft`; report the returned eligible customer count, explain that each draft uses verified purchase/category/segment details where present, and ask the merchant to review the campaign in DukaanOS. Do not execute anything until the merchant explicitly approves using the review button. Approval records each message as simulated only. Never say a WhatsApp/SMS message was sent or delivered.
 
 ### Sarvam HTTPS API tools
 
-Create these as Sarvam **API tools** (not lifecycle webhooks), use the matching HTTP method and path, and configure **Auth → Bearer token** with the secure workspace secret matching `SARVAM_TOOL_API_TOKEN`. Responses are small JSON objects calculated from the server-side demo data:
+Create these as Sarvam **API tools** (not lifecycle webhooks), use the matching HTTP method and path, and configure **Auth â†’ Bearer token** with the secure workspace secret matching `SARVAM_TOOL_API_TOKEN`. Responses are small JSON objects calculated from the server-side demo data:
 
 | Tool name | Method and path | Description |
 | --- | --- | --- |

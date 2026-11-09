@@ -275,7 +275,7 @@ export function DashboardShell({
         </header>
         <main className="px-4 py-7 sm:px-6 sm:py-8 lg:px-9 lg:py-9">{children}</main>
       </div>
-      </BusinessProvider>
     </div>
+    </BusinessProvider>
   );
 }
