@@ -17,6 +17,7 @@ import {
   transactionCountForCustomer,
 } from "../lib/demo-data/analytics.ts";
 import { assertDemoDataIntegrity } from "../lib/demo-data/integrity.ts";
+import { inventoryMetrics, inventoryRecommendations } from "../lib/demo-data/inventory.ts";
 import { createDemoData } from "../lib/demo-data/seed.ts";
 import {
   loadDemoData,
@@ -37,6 +38,32 @@ import {
 } from "../lib/assistant/sarvam.ts";
 import { POST as assistantPost } from "../app/api/assistant/route.ts";
 import { GET as demoDataGet } from "../app/api/demo-data/route.ts";
+import { PUT as inventoryStatePut } from "../app/api/inventory/state/route.ts";
+import { GET as sarvamProxyGet } from "../app/api/sarvam/[...path]/route.ts";
+import { GET as voiceConfigGet } from "../app/api/voice/config/route.ts";
+import {
+  GET as voiceCampaignsGet,
+  POST as voiceCampaignsPost,
+} from "../app/api/voice/campaigns/route.ts";
+import { PATCH as voiceCampaignPatch } from "../app/api/voice/campaigns/[id]/route.ts";
+import {
+  POST as regenerateCampaignMessagePost,
+} from "../app/api/voice/campaigns/[id]/messages/[customerId]/regenerate/route.ts";
+import { POST as approveVoiceCampaignPost } from "../app/api/voice/campaigns/[id]/approve/route.ts";
+import {
+  GET as voiceToolsGet,
+  POST as voiceToolsPost,
+} from "../app/api/voice/tools/[tool]/route.ts";
+import { getServerDemoData, updateServerInventory } from "../lib/demo-data/server-store.ts";
+import {
+  getInactiveCustomers,
+  getRevenueAndProfit,
+  getTodaySales,
+} from "../lib/assistant/voice-tools.ts";
+import {
+  createPersonalizedCampaign,
+  createPersonalizedMessage,
+} from "../lib/assistant/campaign-messages.ts";
 import type {
   Customer,
   CustomerSpending,
@@ -224,6 +251,24 @@ test("inventory status and summary classify normal, low, and zero stock", () => 
   });
 });
 
+test("inventory recommendations use actual recent sales and minimum-stock shortages", () => {
+  const result = inventoryRecommendations(products, transactions, anchor);
+  assert.equal(result.find((item) => item.productId === "prd-2")?.shortage, 3);
+  assert.equal(result.find((item) => item.productId === "prd-2")?.quantitySoldInWindow, 2);
+  assert.equal(result.find((item) => item.productId === "prd-2")?.suggestedReorderQuantity, 3);
+  assert.equal(result.find((item) => item.productId === "prd-3")?.suggestedReorderQuantity, 5);
+  assert.equal(result.find((item) => item.productId === "prd-1")?.suggestedReorderQuantity, 0);
+  assert.equal(inventoryMetrics(fixture).totalUnits, 13);
+  assert.deepEqual(
+    deterministicIntentFallback("Show me products with less than 5 units"),
+    { intent: "stock_below", params: { threshold: 5 } },
+  );
+  assert.deepEqual(
+    deterministicIntentFallback("How much stock do I have?"),
+    { intent: "stock_summary", params: {} },
+  );
+});
+
 test("daily revenue includes every requested day and excludes out-of-range sales", () => {
   const daily = dailyRevenue(transactions, 2, anchor);
   assert.deepEqual(daily, [
@@ -320,8 +365,36 @@ test("valid demo records persist and reload from local storage", () => {
   });
 
   try {
-    saveDemoData(fixture);
-    assert.deepEqual(loadDemoData(), fixture);
+    const inventoryFixture: DemoData = {
+      ...fixture,
+      inventoryMovements: [{
+        id: "move-1",
+        productId: "prd-1",
+        productName: "Rice",
+        operation: "stock-in",
+        quantityChanged: 4,
+        previousStock: 11,
+        newStock: 15,
+        reason: "Invoice #123",
+        createdAt: anchor.toISOString(),
+      }],
+      supplierOrders: [{
+        id: "order-1",
+        supplierName: "Local wholesaler",
+        status: "draft",
+        createdAt: anchor.toISOString(),
+        items: [{
+          productId: "prd-1",
+          productName: "Rice",
+          currentStock: 11,
+          reorderQuantity: 5,
+          purchaseCost: 60,
+          estimatedAmount: 300,
+        }],
+      }],
+    };
+    saveDemoData(inventoryFixture);
+    assert.deepEqual(loadDemoData(), inventoryFixture);
     assert.throws(
       () => saveDemoData({ ...fixture, transactions: [{ ...transactions[0], customerId: "missing" }] }),
       /unknown customer/,
@@ -391,6 +464,85 @@ test("classifies reorder requests and uses deterministic fallback for malformed 
   });
 });
 
+test("inventory assistant answers restock questions from real data when Sarvam is unavailable", async () => {
+  const result = await processAssistantMessage(
+    "Which products should I reorder?",
+    fixture,
+    {
+      complete: async () => {
+        throw new SarvamApiError("Unavailable", "api_failure");
+      },
+    },
+  );
+  assert.equal(result.intent, "reorder_suggestions");
+  assert.deepEqual(
+    (result.data?.products as Product[]).map((product) => product.id),
+    ["prd-2", "prd-3"],
+  );
+  assert.match(result.reply, /Tea: 2 in stock, minimum 5, suggested reorder 3/);
+});
+
+test("personalized campaigns use each eligible customer's verified purchase data", () => {
+  const asOf = anchor.toISOString();
+  const oldTransactions = transactions.map((entry, index) => ({
+    ...entry,
+    date: new Date(anchor.getTime() - (index < 2 ? 45 : 31) * 24 * 60 * 60 * 1000).toISOString(),
+  }));
+  const data: DemoData = {
+    ...fixture,
+    asOf,
+    customers: [
+      ...customers,
+      {
+        id: "cus-3",
+        name: "Meera Example",
+        phone: "+91 90000 10003",
+        email: "meera@example.com",
+        address: "Bengaluru",
+        joinedAt: "2026-01-01",
+        notes: "",
+      },
+    ],
+    transactions: oldTransactions,
+  };
+  const draft = createPersonalizedCampaign(data);
+  assert.equal(draft.eligibleCustomerIds.length, 3);
+  assert.equal(draft.messages.length, 3);
+  assert.equal(new Set(draft.messages.map((entry) => entry.message)).size, 3);
+
+  const knownPurchase = draft.messages.find((entry) => entry.customerId === "cus-1");
+  assert.ok(knownPurchase);
+  assert.equal(knownPurchase.lastPurchaseAt, oldTransactions[1].date);
+  assert.equal(knownPurchase.productCategory, "Groceries");
+  assert.equal(knownPurchase.customerSegment, "inactive");
+  assert.match(knownPurchase.message, /Asha Rao/);
+  assert.match(knownPurchase.message, /groceries/);
+  assert.match(knownPurchase.message, /15% OFF/);
+  assert.ok(
+    knownPurchase.message.includes(
+      new Intl.DateTimeFormat("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(oldTransactions[1].date)),
+    ),
+  );
+  assert.match(knownPurchase.message, /inactive segment/);
+
+  const noHistory = draft.messages.find((entry) => entry.customerId === "cus-3");
+  assert.ok(noHistory);
+  assert.equal(noHistory.lastPurchaseAt, null);
+  assert.equal(noHistory.previousPurchase, null);
+  assert.equal(noHistory.productCategory, null);
+  assert.doesNotMatch(noHistory.message, /last shopped|last saw you/i);
+  assert.match(noHistory.message, /next purchase/);
+
+  const alternate = createPersonalizedMessage(data, "cus-1", 15, true);
+  assert.ok(alternate);
+  assert.notEqual(alternate.message, knownPurchase.message);
+});
+
 test("Sarvam client uses the documented endpoint, model, and authentication headers", async () => {
   let requestUrl = "";
   let requestHeaders: Headers | undefined;
@@ -413,6 +565,7 @@ test("Sarvam client uses the documented endpoint, model, and authentication head
   assert.equal(requestHeaders?.get("authorization"), "Bearer sk_test_key");
   assert.equal(requestHeaders?.get("api-subscription-key"), "sk_test_key");
   assert.equal(requestBody?.model, SARVAM_CHAT_MODEL);
+  assert.equal(requestBody?.max_tokens, 1024);
   await assert.rejects(
     () => callSarvam([{ role: "user", content: "Hello" }], { apiKey: "" }),
     (error: unknown) => error instanceof SarvamApiError && error.kind === "missing_key",
@@ -463,5 +616,310 @@ test("assistant route returns friendly HTTP 200 errors when Sarvam is not config
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.SARVAM_API_KEY;
     else process.env.SARVAM_API_KEY = previousKey;
+  }
+});
+
+test("voice setup reports missing credentials without exposing the API key", async () => {
+  const names = ["SARVAM_API_KEY", "SARVAM_ORG_ID", "SARVAM_WORKSPACE_ID", "SARVAM_APP_ID"] as const;
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
+  try {
+    for (const name of names) delete process.env[name];
+    const response = voiceConfigGet(new Request("http://localhost/api/voice/config"));
+    const payload = await response.json();
+    assert.equal(payload.configured, false);
+    assert.deepEqual(payload.missing, names);
+    assert.equal("apiKey" in payload, false);
+  } finally {
+    for (const name of names) {
+      const value = previous.get(name);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test("Sarvam proxy forwards only the configured runtime path with the server API key", async () => {
+  const envNames = ["SARVAM_API_KEY", "SARVAM_ORG_ID", "SARVAM_WORKSPACE_ID", "SARVAM_APP_ID"] as const;
+  const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
+  const previousFetch = globalThis.fetch;
+  let upstreamUrl = "";
+  let upstreamHeaders: Headers | undefined;
+
+  try {
+    process.env.SARVAM_API_KEY = "server-test-key";
+    process.env.SARVAM_ORG_ID = "org-123";
+    process.env.SARVAM_WORKSPACE_ID = "workspace-123";
+    process.env.SARVAM_APP_ID = "app-123";
+    globalThis.fetch = async (input, init) => {
+      upstreamUrl = String(input);
+      upstreamHeaders = new Headers(init?.headers);
+      return Response.json({ url: "wss://example.test", reference_id: "ref-1" });
+    };
+
+    const response = await sarvamProxyGet(
+      new Request(
+        "http://localhost/api/sarvam/orgs/org-123/workspaces/workspace-123/apps/app-123/url?interaction_type=call&version=2",
+      ),
+      {
+        params: Promise.resolve({
+          path: ["orgs", "org-123", "workspaces", "workspace-123", "apps", "app-123", "url"],
+        }),
+      },
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      upstreamUrl,
+      "https://apps.sarvam.ai/api/app-runtime/orgs/org-123/workspaces/workspace-123/apps/app-123/url?interaction_type=call&version=2",
+    );
+    assert.equal(upstreamHeaders?.get("x-api-key"), "server-test-key");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+
+    const rejectedPath = await sarvamProxyGet(
+      new Request("http://localhost/api/sarvam/orgs/other/workspaces/workspace-123/apps/app-123/url"),
+      {
+        params: Promise.resolve({
+          path: ["orgs", "other", "workspaces", "workspace-123", "apps", "app-123", "url"],
+        }),
+      },
+    );
+    assert.equal(rejectedPath.status, 404);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const name of envNames) {
+      const value = previousEnv.get(name);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test("business tools use server demo calculations and require the webhook bearer token", async () => {
+  const previousToken = process.env.SARVAM_TOOL_API_TOKEN;
+  process.env.SARVAM_TOOL_API_TOKEN = "test-tool-token";
+  const data = getServerDemoData();
+  const context = (tool: string) => ({ params: Promise.resolve({ tool }) });
+  const request = (path: string, method = "GET", token?: string) =>
+    new Request(`http://localhost/api/voice/tools/${path}`, {
+      method,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+  try {
+    const unauthorized = await voiceToolsGet(request("sales-today"), context("sales-today"));
+    assert.equal(unauthorized.status, 401);
+
+    const todayResponse = await voiceToolsGet(
+      request("sales-today", "GET", "test-tool-token"),
+      context("sales-today"),
+    );
+    assert.deepEqual(await todayResponse.json(), getTodaySales(data));
+
+    const profitResponse = await voiceToolsGet(
+      request("revenue-profit", "GET", "test-tool-token"),
+      context("revenue-profit"),
+    );
+    assert.deepEqual(await profitResponse.json(), getRevenueAndProfit(data));
+
+    const inactiveResponse = await voiceToolsGet(
+      request("inactive-customers", "GET", "test-tool-token"),
+      context("inactive-customers"),
+    );
+    const inactive = await inactiveResponse.json();
+    assert.equal(inactive.count, getInactiveCustomers(data).count);
+    assert.ok(inactive.customers.every((customer: { message: string; discountPercent: number }) =>
+      customer.message.includes("15% OFF") && customer.discountPercent === 15,
+    ));
+
+    const customerName = encodeURIComponent(data.customers[0].name);
+    const customerResponse = await voiceToolsGet(
+      request(`customer-history?name=${customerName}`, "GET", "test-tool-token"),
+      context("customer-history"),
+    );
+    const history = await customerResponse.json();
+    assert.equal(customerResponse.status, 200);
+    assert.equal(history.name, data.customers[0].name);
+    assert.ok(Array.isArray(history.transactions));
+
+    const draftResponse = await voiceToolsPost(
+      request("campaign-draft", "POST", "test-tool-token"),
+      context("campaign-draft"),
+    );
+    const draft = await draftResponse.json();
+    assert.equal(draft.requiresMerchantApproval, true);
+    assert.equal(draft.simulatedOnly, true);
+    assert.equal(draft.eligibleCustomerCount, getInactiveCustomers(data).count);
+    assert.equal(draft.messages.length, draft.eligibleCustomerCount);
+    assert.ok(draft.messages.every((message: { customerName: string; message: string }) =>
+      message.message.includes(message.customerName),
+    ));
+
+    const firstDraftMessage = draft.messages[0];
+    const editResponse = await voiceCampaignPatch(
+      new Request(`http://localhost/api/voice/campaigns/${draft.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: firstDraftMessage.customerId,
+          message: "Merchant-edited personalized message.",
+        }),
+      }),
+      { params: Promise.resolve({ id: draft.id }) },
+    );
+    assert.equal(editResponse.status, 200);
+
+    const regenerateResponse = await regenerateCampaignMessagePost(
+      new Request(
+        `http://localhost/api/voice/campaigns/${draft.id}/messages/${firstDraftMessage.customerId}/regenerate`,
+        { method: "POST" },
+      ),
+      {
+        params: Promise.resolve({
+          id: draft.id,
+          customerId: firstDraftMessage.customerId,
+        }),
+      },
+    );
+    const regenerated = await regenerateResponse.json();
+    assert.equal(regenerateResponse.status, 200);
+    assert.notEqual(regenerated.message, "Merchant-edited personalized message.");
+
+    const pendingResponse = await voiceCampaignsGet(
+      new Request("http://localhost/api/voice/campaigns"),
+    );
+    const pending = await pendingResponse.json();
+    assert.equal(pending.pending.id, draft.id);
+    assert.equal(pending.pending.message, draft.message);
+
+    const approvalResponse = await approveVoiceCampaignPost(
+      new Request(`http://localhost/api/voice/campaigns/${draft.id}/approve`, { method: "POST" }),
+      { params: Promise.resolve({ id: draft.id }) },
+    );
+    const approval = await approvalResponse.json();
+    assert.equal(approval.simulated, true);
+    assert.equal(approval.successfulCount, draft.eligibleCustomerCount);
+    assert.equal(approval.failedCount, 0);
+    assert.match(approval.message, /No messages were sent/);
+    const duplicateResponse = await approveVoiceCampaignPost(
+      new Request(`http://localhost/api/voice/campaigns/${draft.id}/approve`, { method: "POST" }),
+      { params: Promise.resolve({ id: draft.id }) },
+    );
+    assert.equal(duplicateResponse.status, 409);
+
+    const historyResponse = await voiceToolsGet(
+      request("campaign-history", "GET", "test-tool-token"),
+      context("campaign-history"),
+    );
+    const historyBody = await historyResponse.json();
+    assert.ok(historyBody.campaigns.some((campaign: {
+      id: string;
+      status: string;
+      successfulCount: number;
+      failedCount: number;
+      messages: Array<{ status: string; customerId: string }>;
+    }) =>
+      campaign.id === draft.campaign.id &&
+      campaign.status === "simulated" &&
+      campaign.successfulCount === draft.eligibleCustomerCount &&
+      campaign.failedCount === 0 &&
+      campaign.messages.length === draft.eligibleCustomerCount &&
+      campaign.messages.every((message) => message.status === "simulated" && message.customerId),
+    ));
+
+    const createResponse = await voiceCampaignsPost(
+      new Request("http://localhost/api/voice/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discountPercent: 10 }),
+      }),
+    );
+    const created = await createResponse.json();
+    assert.equal(createResponse.status, 201);
+    assert.equal(created.pending.discountPercent, 10);
+    assert.equal(created.pending.eligibleCustomerCount, created.pending.messages.length);
+    assert.ok(created.pending.messages.every((message: { discountPercent: number }) =>
+      message.discountPercent === 10,
+    ));
+
+    const executeCreatedResponse = await approveVoiceCampaignPost(
+      new Request(`http://localhost/api/voice/campaigns/${created.pending.id}/approve`, { method: "POST" }),
+      { params: Promise.resolve({ id: created.pending.id }) },
+    );
+    assert.equal(executeCreatedResponse.status, 200);
+  } finally {
+    if (previousToken === undefined) delete process.env.SARVAM_TOOL_API_TOKEN;
+    else process.env.SARVAM_TOOL_API_TOKEN = previousToken;
+  }
+});
+
+test("inventory state sync updates server-side tools and rejects cross-origin writes", async () => {
+  const serverData = getServerDemoData();
+  const originalProducts = serverData.products.slice();
+  const originalMovements = serverData.inventoryMovements ?? [];
+  const originalOrders = serverData.supplierOrders ?? [];
+  const product: Product = {
+    id: "inventory-sync-test",
+    name: "Inventory sync test",
+    sku: "INVENTORY-SYNC-TEST",
+    category: "Groceries",
+    unit: "unit",
+    price: 25,
+    costPrice: 12,
+    stock: 15,
+    reorderLevel: 20,
+    supplierName: "Test supplier",
+    lastUpdatedAt: anchor.toISOString(),
+  };
+  const inventoryMovements = [{
+    id: "inventory-sync-movement",
+    productId: product.id,
+    productName: product.name,
+    operation: "stock-in" as const,
+    quantityChanged: 20,
+    previousStock: 0,
+    newStock: 20,
+    reason: "Test invoice",
+    createdAt: anchor.toISOString(),
+  }];
+  const supplierOrders = [{
+    id: "inventory-sync-order",
+    supplierName: "Test supplier",
+    status: "draft" as const,
+    createdAt: anchor.toISOString(),
+    items: [{
+      productId: product.id,
+      productName: product.name,
+      currentStock: 0,
+      reorderQuantity: 20,
+      purchaseCost: 12,
+      estimatedAmount: 240,
+    }],
+  }];
+
+  try {
+    const body = JSON.stringify({
+      products: [...originalProducts, product],
+      inventoryMovements,
+      supplierOrders,
+    });
+    const rejected = await inventoryStatePut(new Request("http://localhost/api/inventory/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Origin: "https://other.example" },
+      body,
+    }));
+    assert.equal(rejected.status, 403);
+
+    const saved = await inventoryStatePut(new Request("http://localhost/api/inventory/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      body,
+    }));
+    assert.equal(saved.status, 200);
+    const synced = getServerDemoData();
+    assert.equal(synced.products.find((entry) => entry.id === product.id)?.stock, 15);
+    assert.equal(synced.inventoryMovements?.[0].reason, "Test invoice");
+    assert.equal(synced.supplierOrders?.[0].items[0].estimatedAmount, 240);
+  } finally {
+    updateServerInventory(originalProducts, originalMovements, originalOrders);
   }
 });

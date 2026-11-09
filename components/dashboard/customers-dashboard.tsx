@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search, UsersRound } from "lucide-react";
+import { useBusinessInfo } from "@/components/dashboard/business-context";
 import { useDemoStore } from "@/components/dashboard/use-demo-store";
 import { segmentCustomers } from "@/lib/demo-data/analytics";
 import type { CustomerSegment } from "@/lib/demo-data/types";
@@ -45,6 +46,7 @@ function initials(name: string): string {
 }
 
 export function CustomersDashboard() {
+  const { businessName } = useBusinessInfo();
   const { data, status, error, reset } = useDemoStore();
   const [query, setQuery] = useState("");
   const [selectedSegment, setSelectedSegment] = useState<CustomerSegment | "all">("all");
@@ -119,7 +121,7 @@ export function CustomersDashboard() {
           Your customers
         </h1>
         <p className="mt-1.5 text-sm text-slate-500">
-          Get to know the people who keep Sharma General Store going.
+          Get to know the people who keep {businessName} going.
         </p>
       </section>
 

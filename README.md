@@ -1,6 +1,6 @@
 # DukaanOS
 
-DukaanOS is a responsive workspace foundation for small-business owners. This first iteration includes the shared dashboard layout, navigation, a sample overview, and placeholders for the upcoming modules.
+DukaanOS is a responsive workspace for small-business owners, with a shared dashboard, demo store data, and an AI assistant with text and optional Sarvam voice.
 
 The demo workspace uses fictional records for Sharma General Store. Its dashboard totals and chart are calculated from the same demo transactions and expenses that the data layer exposes.
 
@@ -18,14 +18,14 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 | Page | Route |
 | --- | --- |
 | Overview | `/` |
-| AI Assistant | `/ai-assistant` |
+| AI Assistant (chat and voice) | `/ai-assistant` |
 | Customers | `/customers` |
 | Marketing Campaigns | `/marketing` |
 | Inventory | `/inventory` |
 | Business Insights | `/insights` |
 | Settings | `/settings` |
 
-The module routes intentionally use placeholders until their features are implemented.
+Settings remains a placeholder; the inventory, customer, campaign, and assistant modules are interactive.
 
 ## Project structure
 
@@ -33,10 +33,11 @@ The module routes intentionally use placeholders until their features are implem
 app/
   (dashboard)/      Dashboard routes and shared layout
 components/
-  dashboard/        Sidebar, shell, chart, and module placeholder
+  dashboard/        Sidebar, shell, chart, and workspace modules
   ui/               shadcn/ui-style primitives
 lib/
-  demo-data/        Typed demo entities, seeded records, analytics, validation, and local storage
+  demo-data/        Typed demo entities, seeded records, analytics, validation, and storage
+  assistant/        Text assistant and business-tool calculations
   navigation.ts     Shared route labels and icons
   utils.ts          Shared class-name helper
 tests/
@@ -58,14 +59,72 @@ Customer segments are derived from purchases: high-value customers have spent at
 
 The `useDemoStore` hook provides typed create/update/delete helpers for customer, product, transaction, expense, and campaign records. It saves updates to browser local storage and validates transaction references before saving. Local data can be reset with the hook's `reset` method.
 
+## Inventory
+
+The Inventory page uses the shared `DemoData.products` collection: add, edit, search, filter, and delete products; record stock-in, stock-out, and adjustment movements; review low-stock alerts and rule-based reorder suggestions; and save or approve supplier order drafts. Stock movements and supplier drafts are stored in the same versioned browser local-storage record as the rest of the demo data. Product and stock changes therefore remain available after a page reload and update dashboard metrics and text-assistant answers.
+
+Low stock means current quantity is less than or equal to the configured minimum. Reorder recommendations use actual completed sales from the last 30 days and a 14-day coverage target, while never suggesting less than the minimum-stock shortage. A supplier draft uses the product purchase cost; merchants can edit quantities and must supply a supplier name before saving. Approval only marks the draft approved in DukaanOS. It does not send an order.
+
+When the Inventory page loads or inventory changes, it synchronizes products, stock history, and supplier drafts to the server-side demo store so Sarvam inventory tools use the current inventory. That server store is in memory and resets when its process restarts; browser inventory remains in local storage. This demo architecture does not provide multi-device synchronization or durable server-side history.
+
 Run the data tests with:
 
 ```bash
 npm test
 ```
 
-## AI assistant backend
+## AI assistant
 
-The `POST /api/assistant` endpoint accepts `{ "message": "...", "data": <current DemoData> }`. The browser must send its current dataset because the server cannot read browser local storage. The response includes `{ reply, intent, data }`, with analytics results available for future chart and table views.
+The `POST /api/assistant` endpoint accepts `{ "message": "...", "data": <current DemoData> }`. The browser sends its current dataset because the server cannot read browser local storage. The response includes `{ reply, intent, data }`, with analytics results available for future chart and table views.
 
-Set `SARVAM_API_KEY` in a local `.env.local` file (see [.env.example](./.env.example)). The key is used only by the server. The integration uses the [Sarvam Chat Completions API](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1), model `sarvam-105b`, the `Authorization: Bearer` header, and the `api-subscription-key` header. It classifies supported questions, runs the existing demo analytics, then asks Sarvam to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; requests with missing credentials, provider failures, or timeouts return a friendly `error` response with HTTP 200.
+The text assistant uses the [Sarvam Chat Completions API](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1), model `sarvam-105b`, and a server-only API key. It classifies supported questions, runs the existing demo analytics, then asks Sarvam to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; missing credentials, provider failures, and timeouts return a friendly error response.
+
+## Sarvam Voice Agent setup
+
+The browser uses the official [`sarvam-conv-ai-sdk`](https://docs.sarvam.ai/voice-agents/deploy/sdks/web) web SDK (`ConversationAgent`, `BrowserAudioInterface`, and `InteractionType.CALL`). Its signed-URL request is proxied through `/api/sarvam/`; the Sarvam API key stays on the server and is never placed in browser code.
+
+1. Copy `.env.example` to `.env.local` if it is not already present. The checked-in `.env.example` contains placeholders only; `.env.local` is ignored by Git.
+2. In your Sarvam Voice Agents dashboard, open **Settings → API Key** and put that Voice Agents API key in `SARVAM_API_KEY`.
+3. Open the agent you intend to use and choose **Deploy with Code → Web SDK**. Copy the `org_id`, `workspace_id`, and `app_id` values shown in the SDK configuration into `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, and `SARVAM_APP_ID`, respectively. `app_id` is the ID of the voice agent, not a Chat Completions model ID.
+4. Generate a long random token for `SARVAM_TOOL_API_TOKEN`, then configure the same value as a **Bearer token secret** in the Sarvam workspace. For example, generate a token locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Never put this token in browser code or a committed file.
+5. In the Sarvam agent builder, use the system instructions below, add the HTTPS API tools listed in the next section, and **commit an agent version**. The SDK cannot connect to an agent with no committed version.
+6. Restart `npm run dev`, allow microphone access when prompted, then click **Start voice**. Starting the assistant page does not open the microphone.
+
+The voice agent's system instructions:
+
+> You are DukaanOS, an AI business assistant for Indian shopkeepers. Speak naturally in Hindi, English, or Hinglish. Answer using actual DukaanOS business data. Help merchants understand sales, customers, inventory, and profits. Keep answers short and practical. Never invent business figures. Ask for confirmation before making changes or executing campaigns.
+
+Add these campaign-specific rules after that prompt: for “Create personalized 15% discount messages for inactive customers” (or an equivalent request), call `campaign-draft`; report the returned eligible customer count, explain that each draft uses verified purchase/category/segment details where present, and ask the merchant to review the campaign in DukaanOS. Do not execute anything until the merchant explicitly approves using the review button. Approval records each message as simulated only. Never say a WhatsApp/SMS message was sent or delivered.
+
+### Sarvam HTTPS API tools
+
+Create these as Sarvam **API tools** (not lifecycle webhooks), use the matching HTTP method and path, and configure **Auth → Bearer token** with the secure workspace secret matching `SARVAM_TOOL_API_TOKEN`. Responses are small JSON objects calculated from the server-side demo data:
+
+| Tool name | Method and path | Description |
+| --- | --- | --- |
+| `sales_today` | `GET /api/voice/tools/sales-today` | Today's actual revenue and transaction count |
+| `revenue_and_profit` | `GET /api/voice/tools/revenue-profit` | Calculated total revenue, estimated profit, and expenses |
+| `top_products` | `GET /api/voice/tools/top-products?limit=5` | Top-selling products by quantity and revenue |
+| `low_stock_and_reorders` | `GET /api/voice/tools/inventory-low` | Low/out-of-stock items and suggested reorder quantities |
+| `inactive_customers` | `GET /api/voice/tools/inactive-customers` | Eligible customers, verified purchase details, and segment |
+| `customer_purchase_history` | `GET /api/voice/tools/customer-history?name={{customerName}}` | A customer's recent purchases and actual spend |
+| `business_insights` | `GET /api/voice/tools/business-insights` | Calculated revenue, profit, inventory, customers, and top products |
+| `campaign_history` | `GET /api/voice/tools/campaign-history` | Existing campaign records and simulated campaign status |
+| `draft_inactive_customer_campaign` | `POST /api/voice/tools/campaign-draft` | Create personalized 15% messages for eligible customers and request merchant review |
+
+Use the secure bearer credential for every tool. The customer-history tool accepts an exact customer name or `customer_id`. The campaign-draft tool returns a unique message draft per eligible customer, generated from their actual name, segment, last purchase date, and latest product/category when available, plus the eligible count and an approval-required flag. The Marketing Campaigns page supports reviewing, editing, regenerating, and previewing all messages. Only the merchant's explicit **Approve & simulate** action records per-customer simulation results and campaign history; duplicate execution is rejected. No messaging provider is connected and no messages are sent.
+
+### Local testing and deployment limits
+
+The browser voice session can be tested locally at `http://localhost:3000` (localhost is permitted for microphone access). Sarvam's hosted API tools **cannot** call a localhost URL. To test those tools through Sarvam, deploy DukaanOS to a publicly reachable HTTPS host, set the environment variables there, and use that public base URL in each Sarvam tool. Do not configure cloud tools to call localhost.
+
+For a local API smoke test, set the token in the PowerShell session and call one authenticated endpoint:
+
+```powershell
+$env:SARVAM_TOOL_API_TOKEN = "the-same-local-test-token-as-.env.local"
+curl.exe -H "Authorization: Bearer $env:SARVAM_TOOL_API_TOKEN" http://localhost:3000/api/voice/tools/sales-today
+```
+
+Server-side demo data and simulated campaigns are held in memory for the lifetime of a server process. This provides a consistent dataset to the API tools without trusting browser localStorage, but it is not durable or shared across serverless instances/restarts. Browser-only edits are not synchronized. Use a shared persistent data store before relying on edits or campaign history across restarts or production instances.
+
+The integration is **not confirmed end-to-end** until valid Sarvam credentials are configured, an agent is committed, and a real voice session plus authenticated HTTPS tool calls have been tested.

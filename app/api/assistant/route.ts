@@ -3,9 +3,11 @@ import { z } from "zod";
 import { assertDemoDataIntegrity } from "@/lib/demo-data/integrity";
 import type { DemoData } from "@/lib/demo-data/types";
 import { errorAssistantResult, processAssistantMessage } from "@/lib/assistant/service";
+import { fetchBusinessData } from "@/lib/db/queries";
+import { resolveServerBusiness } from "@/lib/db/voice-campaigns";
 import { SarvamApiError } from "@/lib/assistant/sarvam";
 
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 const customerSchema = z.object({
   id: z.string(),
@@ -27,6 +29,8 @@ const productSchema = z.object({
   costPrice: z.number(),
   stock: z.number(),
   reorderLevel: z.number(),
+  supplierName: z.string().optional(),
+  lastUpdatedAt: z.string().optional(),
 });
 
 const transactionSchema = z.object({
@@ -61,7 +65,7 @@ const campaignSchema = z.object({
   id: z.string(),
   name: z.string(),
   channel: z.enum(["WhatsApp", "Instagram", "In-store", "SMS"]),
-  status: z.enum(["draft", "scheduled", "active", "completed"]),
+  status: z.enum(["draft", "scheduled", "active", "completed", "simulated"]),
   startDate: z.string(),
   endDate: z.string(),
   budget: z.number(),
@@ -71,6 +75,34 @@ const campaignSchema = z.object({
   revenue: z.number(),
 });
 
+const inventoryMovementSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  operation: z.enum(["stock-in", "stock-out", "adjustment"]),
+  quantityChanged: z.number(),
+  previousStock: z.number(),
+  newStock: z.number(),
+  reason: z.string(),
+  createdAt: z.string(),
+});
+
+const supplierOrderSchema = z.object({
+  id: z.string(),
+  supplierName: z.string(),
+  status: z.enum(["draft", "approved"]),
+  createdAt: z.string(),
+  approvedAt: z.string().optional(),
+  items: z.array(z.object({
+    productId: z.string(),
+    productName: z.string(),
+    currentStock: z.number(),
+    reorderQuantity: z.number(),
+    purchaseCost: z.number(),
+    estimatedAmount: z.number(),
+  })),
+});
+
 const demoDataSchema = z.object({
   asOf: z.string(),
   customers: z.array(customerSchema),
@@ -78,6 +110,8 @@ const demoDataSchema = z.object({
   transactions: z.array(transactionSchema),
   expenses: z.array(expenseSchema),
   campaigns: z.array(campaignSchema),
+  inventoryMovements: z.array(inventoryMovementSchema).optional(),
+  supplierOrders: z.array(supplierOrderSchema).optional(),
 });
 
 const requestSchema = z.object({
@@ -101,7 +135,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const data: DemoData = parsed.data.data;
+  // Authenticated merchants: answer from the database (RLS-scoped), never from
+  // the client-sent copy. Demo/anonymous callers keep the existing flow.
+  const business = await resolveServerBusiness();
+  const data: DemoData = business
+    ? await fetchBusinessData(business.db, business.businessId)
+    : parsed.data.data;
   try {
     assertDemoDataIntegrity(data);
   } catch {
@@ -111,7 +150,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const timeoutSignal = AbortSignal.timeout(10_000);
+  const timeoutSignal = AbortSignal.timeout(55_000);
   try {
     const result = await processAssistantMessage(parsed.data.message, data, {
       signal: timeoutSignal,

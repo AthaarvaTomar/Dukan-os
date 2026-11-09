@@ -1,6 +1,6 @@
 export const SARVAM_CHAT_COMPLETIONS_URL = "https://api.sarvam.ai/v1/chat/completions";
 export const SARVAM_CHAT_MODEL = "sarvam-105b";
-export const SARVAM_REQUEST_TIMEOUT_MS = 10_000;
+export const SARVAM_REQUEST_TIMEOUT_MS = 25_000;
 
 export interface SarvamMessage {
   role: "system" | "user";
@@ -52,7 +52,7 @@ export async function callSarvam(
         model: SARVAM_CHAT_MODEL,
         messages,
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: 1024,
         stream: false,
       }),
       signal: options.signal ?? AbortSignal.timeout(SARVAM_REQUEST_TIMEOUT_MS),

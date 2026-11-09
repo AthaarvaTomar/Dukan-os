@@ -13,11 +13,73 @@ export function assertDemoDataIntegrity(data: DemoData): void {
     ["transaction", data.transactions.map((transaction) => transaction.id)],
     ["expense", data.expenses.map((expense) => expense.id)],
     ["campaign", data.campaigns.map((campaign) => campaign.id)],
+    ["inventory movement", (data.inventoryMovements ?? []).map((movement) => movement.id)],
+    ["supplier order", (data.supplierOrders ?? []).map((order) => order.id)],
   ];
 
   for (const [entity, ids] of entityCollections) {
     if (new Set(ids).size !== ids.length) {
       throw new Error(`Demo data contains duplicate ${entity} IDs.`);
+    }
+  }
+
+  for (const product of data.products) {
+    if (
+      !product.name.trim() ||
+      !product.sku.trim() ||
+      !Number.isFinite(product.price) ||
+      product.price < 0 ||
+      !Number.isFinite(product.costPrice) ||
+      product.costPrice < 0 ||
+      !Number.isInteger(product.stock) ||
+      product.stock < 0 ||
+      !Number.isInteger(product.reorderLevel) ||
+      product.reorderLevel < 0 ||
+      (product.lastUpdatedAt !== undefined && !Number.isFinite(Date.parse(product.lastUpdatedAt)))
+    ) {
+      throw new Error(`Product ${product.id} has invalid inventory details.`);
+    }
+  }
+
+  for (const movement of data.inventoryMovements ?? []) {
+    if (
+      !movement.productId ||
+      !movement.productName.trim() ||
+      !movement.reason.trim() ||
+      !Number.isFinite(Date.parse(movement.createdAt)) ||
+      !Number.isInteger(movement.quantityChanged) ||
+      movement.quantityChanged !== movement.newStock - movement.previousStock ||
+      !Number.isInteger(movement.previousStock) ||
+      !Number.isInteger(movement.newStock) ||
+      movement.previousStock < 0 ||
+      movement.newStock < 0 ||
+      (movement.operation === "stock-in" && movement.newStock <= movement.previousStock) ||
+      (movement.operation === "stock-out" && movement.newStock >= movement.previousStock) ||
+      (movement.operation === "adjustment" && movement.newStock === movement.previousStock)
+    ) {
+      throw new Error(`Inventory movement ${movement.id} is invalid.`);
+    }
+  }
+
+  for (const order of data.supplierOrders ?? []) {
+    if (
+      !order.supplierName.trim() ||
+      !Number.isFinite(Date.parse(order.createdAt)) ||
+      (order.approvedAt !== undefined && !Number.isFinite(Date.parse(order.approvedAt))) ||
+      order.items.some(
+        (item) =>
+          !item.productName.trim() ||
+          !Number.isInteger(item.currentStock) ||
+          item.currentStock < 0 ||
+          !Number.isInteger(item.reorderQuantity) ||
+          item.reorderQuantity < 1 ||
+          !Number.isFinite(item.purchaseCost) ||
+          item.purchaseCost < 0 ||
+          !Number.isFinite(item.estimatedAmount) ||
+          item.estimatedAmount < 0,
+      )
+    ) {
+      throw new Error(`Supplier order ${order.id} is invalid.`);
     }
   }
 

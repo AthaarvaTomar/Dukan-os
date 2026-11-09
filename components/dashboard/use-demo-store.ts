@@ -2,97 +2,104 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import {
-  commitDemoData,
-  getDemoDataLoadError,
-  getDemoDataLoadStatus,
-  getDemoDataSnapshot,
-  getServerDemoDataLoadStatus,
-  getServerDemoDataSnapshot,
-  resetDemoData,
-  subscribeToDemoData,
-} from "@/lib/demo-data/client-store";
-import {
-  removeById,
-  upsertById,
-} from "@/lib/demo-data/storage";
+  businessActions,
+  getBusinessDataError,
+  getBusinessDataServerSnapshot,
+  getBusinessDataSnapshot,
+  getBusinessDataStatus,
+  subscribeToBusinessData,
+} from "@/lib/db/store";
 import type {
   Customer,
-  DemoData,
   Expense,
   MarketingCampaign,
   Product,
-  Transaction,
+  StockOperation,
+  SupplierOrderDraft,
 } from "@/lib/demo-data/types";
 
+/**
+ * Data store for the whole dashboard, backed by Supabase (RLS-scoped to the
+ * signed-in merchant's business). Keeps the historical `useDemoStore` name so
+ * existing components continue to work unchanged.
+ */
 export function useDemoStore() {
   const data = useSyncExternalStore(
-    subscribeToDemoData,
-    getDemoDataSnapshot,
-    getServerDemoDataSnapshot,
+    subscribeToBusinessData,
+    getBusinessDataSnapshot,
+    getBusinessDataServerSnapshot,
   );
-  const status = useSyncExternalStore(
-    subscribeToDemoData,
-    getDemoDataLoadStatus,
-    getServerDemoDataLoadStatus,
+  const rawStatus = useSyncExternalStore(
+    subscribeToBusinessData,
+    getBusinessDataStatus,
+    () => "loading" as const,
   );
   const error = useSyncExternalStore(
-    subscribeToDemoData,
-    getDemoDataLoadError,
+    subscribeToBusinessData,
+    getBusinessDataError,
     () => null,
   );
 
-  const commit = useCallback(
-    (nextData: DemoData) => {
-      commitDemoData(nextData);
-    },
+  // "anonymous" only appears briefly before the layout redirects to onboarding;
+  // an empty store is the correct thing for pages to render meanwhile.
+  const status = rawStatus === "anonymous" ? "ready" : rawStatus;
+
+  const upsertCustomer = useCallback(
+    (record: Customer) => businessActions.upsertCustomer(record),
+    [],
+  );
+  const upsertProduct = useCallback(
+    (record: Product) => businessActions.upsertProduct(record),
+    [],
+  );
+  const upsertExpense = useCallback(
+    (record: Expense) => businessActions.upsertExpense(record),
+    [],
+  );
+  const upsertCampaign = useCallback(
+    (record: MarketingCampaign) => businessActions.upsertCampaign(record),
+    [],
+  );
+  const upsertSupplierOrder = useCallback(
+    (record: SupplierOrderDraft) => businessActions.upsertSupplierOrder(record),
     [],
   );
 
-  const upsertCustomer = useCallback(
-    (record: Customer) => commit({ ...data, customers: upsertById(data.customers, record) }),
-    [commit, data],
-  );
-  const upsertProduct = useCallback(
-    (record: Product) => commit({ ...data, products: upsertById(data.products, record) }),
-    [commit, data],
-  );
-  const upsertTransaction = useCallback(
-    (record: Transaction) => commit({ ...data, transactions: upsertById(data.transactions, record) }),
-    [commit, data],
-  );
-  const upsertExpense = useCallback(
-    (record: Expense) => commit({ ...data, expenses: upsertById(data.expenses, record) }),
-    [commit, data],
-  );
-  const upsertCampaign = useCallback(
-    (record: MarketingCampaign) => commit({ ...data, campaigns: upsertById(data.campaigns, record) }),
-    [commit, data],
-  );
-
   const removeCustomer = useCallback(
-    (id: string) => commit({ ...data, customers: removeById(data.customers, id) }),
-    [commit, data],
+    (id: string) => businessActions.removeCustomer(id),
+    [],
   );
   const removeProduct = useCallback(
-    (id: string) => commit({ ...data, products: removeById(data.products, id) }),
-    [commit, data],
-  );
-  const removeTransaction = useCallback(
-    (id: string) => commit({ ...data, transactions: removeById(data.transactions, id) }),
-    [commit, data],
+    (id: string) => businessActions.removeProduct(id),
+    [],
   );
   const removeExpense = useCallback(
-    (id: string) => commit({ ...data, expenses: removeById(data.expenses, id) }),
-    [commit, data],
+    (id: string) => businessActions.removeExpense(id),
+    [],
   );
   const removeCampaign = useCallback(
-    (id: string) => commit({ ...data, campaigns: removeById(data.campaigns, id) }),
-    [commit, data],
+    (id: string) => businessActions.removeCampaign(id),
+    [],
+  );
+  const removeSupplierOrder = useCallback(
+    (id: string) => businessActions.removeSupplierOrder(id),
+    [],
   );
 
-  const reset = useCallback(() => {
-    resetDemoData();
-  }, []);
+  const adjustStock = useCallback(
+    (productId: string, operation: StockOperation, quantity: number, reason: string) =>
+      businessActions.adjustStock(productId, operation, quantity, reason),
+    [],
+  );
+  const createSale = useCallback(
+    (sale: Parameters<typeof businessActions.createSale>[0]) =>
+      businessActions.createSale(sale),
+    [],
+  );
+  const cancelSale = useCallback(
+    (saleId: string) => businessActions.cancelSale(saleId),
+    [],
+  );
 
   return {
     data,
@@ -100,14 +107,17 @@ export function useDemoStore() {
     error,
     upsertCustomer,
     upsertProduct,
-    upsertTransaction,
     upsertExpense,
     upsertCampaign,
+    upsertSupplierOrder,
     removeCustomer,
     removeProduct,
-    removeTransaction,
     removeExpense,
     removeCampaign,
-    reset,
+    removeSupplierOrder,
+    adjustStock,
+    createSale,
+    cancelSale,
+    reset: businessActions.reset,
   };
 }

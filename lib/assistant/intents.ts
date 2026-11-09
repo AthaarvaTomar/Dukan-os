@@ -3,7 +3,6 @@ import {
   bestSellingProducts,
   dailyRevenue,
   estimatedProfit,
-  inventoryStatus,
   inventorySummary,
   segmentCustomers,
   totalExpenses,
@@ -11,6 +10,7 @@ import {
   totalTransactions,
 } from "@/lib/demo-data/analytics";
 import type { DemoData } from "@/lib/demo-data/types";
+import { inventoryMetrics } from "@/lib/demo-data/inventory";
 import { z } from "zod";
 
 const periodSchema = z.enum(["today", "week", "month"]);
@@ -23,6 +23,11 @@ export const assistantIntentSchema = z.discriminatedUnion("intent", [
   z.object({ intent: z.literal("get_profit"), params: z.object({}).strict() }).strict(),
   z.object({ intent: z.literal("low_stock"), params: z.object({}).strict() }).strict(),
   z.object({ intent: z.literal("reorder_suggestions"), params: z.object({}).strict() }).strict(),
+  z.object({ intent: z.literal("stock_summary"), params: z.object({}).strict() }).strict(),
+  z.object({
+    intent: z.literal("stock_below"),
+    params: z.object({ threshold: z.number().int().min(0).max(100000) }).strict(),
+  }).strict(),
   z.object({
     intent: z.literal("inactive_customers"),
     params: z.object({ days: z.number().int().min(1).max(365) }).strict(),
@@ -44,6 +49,8 @@ const intentNames = [
   "get_profit",
   "low_stock",
   "reorder_suggestions",
+  "stock_summary",
+  "stock_below",
   "inactive_customers",
   "top_products",
   "weekly_report",
@@ -103,11 +110,31 @@ export function executeAssistantIntent(
         expenses: totalExpenses(data.expenses),
       };
     case "low_stock":
-      return { ...inventorySummary(data.products) };
+      return {
+        ...inventorySummary(data.products),
+        products: inventoryMetrics(data).lowStock,
+      };
     case "reorder_suggestions":
       return {
         summary: inventorySummary(data.products),
-        products: data.products.filter((product) => inventoryStatus(product) !== "normal"),
+        products: inventoryMetrics(data).lowStock,
+      };
+    case "stock_summary":
+      return {
+        ...inventorySummary(data.products),
+        totalUnits: data.products.reduce((sum, product) => sum + product.stock, 0),
+      };
+    case "stock_below":
+      return {
+        threshold: classified.params.threshold,
+        products: data.products
+          .filter((product) => product.stock < classified.params.threshold)
+          .map((product) => ({
+            productId: product.id,
+            productName: product.name,
+            stock: product.stock,
+            minimumStock: product.reorderLevel,
+          })),
       };
     case "inactive_customers":
       return inactiveCustomerData(data, classified.params.days);
@@ -136,10 +163,17 @@ export function executeAssistantIntent(
 
 export function deterministicIntentFallback(message: string): ClassifiedIntent {
   const normalized = message.toLocaleLowerCase("en-IN");
+  const stockThreshold = normalized.match(/(?:less than|below|under)\s+(\d{1,6})\s*(?:units?|items?)?/);
+  if (stockThreshold && /\b(stock|products?|items?|units?)\b/.test(normalized)) {
+    return { intent: "stock_below", params: { threshold: Number(stockThreshold[1]) } };
+  }
+  if (/\b(how much|total|overall)\b/.test(normalized) && /\b(stock|inventory|units?)\b/.test(normalized)) {
+    return { intent: "stock_summary", params: {} };
+  }
   if (/\b(weekly report|week report|hafta|saptah)\b/.test(normalized)) {
     return { intent: "weekly_report", params: {} };
   }
-  if (/\b(reorder|re-order|restock|order more|stock up|mang[aou])\b/.test(normalized)) {
+  if (/\b(reorder|re-order|restock(?:ing)?|order more|stock up|need(?:s)? replenishment|need to restock|running low|low stock|mang[aou])\b/.test(normalized)) {
     return { intent: "reorder_suggestions", params: {} };
   }
   if (/\b(inactive|not visited|haven't visited|haven't bought|inactive customers?|customers? not)\b/.test(normalized)) {
@@ -156,10 +190,13 @@ export function deterministicIntentFallback(message: string): ClassifiedIntent {
       params: { limit: limit ? Math.max(1, Math.min(20, Number(limit[1]))) : 5 },
     };
   }
+  if (/\b(highest|most)\b/.test(normalized) && /\b(sales|sold)\b/.test(normalized) && /\b(products?|items?)\b/.test(normalized)) {
+    return { intent: "top_products", params: { limit: 5 } };
+  }
   if (/\b(profit|munafa)\b/.test(normalized)) {
     return { intent: "get_profit", params: {} };
   }
-  if (/\b(low.stock|out.of.stock|inventory|stock)\b/.test(normalized)) {
+  if (/\b(low.stock|out.of.stock|inventory|stock|replenish)\b/.test(normalized)) {
     return { intent: "low_stock", params: {} };
   }
   if (/\b(sales|sale|revenue|bikri|vikri|kamai)\b/.test(normalized)) {
@@ -202,6 +239,8 @@ export function createIntentClassificationPrompt(message: string): string {
     "- get_profit: {}",
     "- low_stock: {}",
     "- reorder_suggestions: {}",
+    "- stock_summary: {}",
+    "- stock_below: {\"threshold\": integer}; include when the user asks for items below/under a quantity.",
     "- inactive_customers: {\"days\": integer}; default to 45 if unspecified.",
     "- top_products: {\"limit\": integer}; default to 5 if unspecified.",
     "- weekly_report: {}",
