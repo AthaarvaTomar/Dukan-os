@@ -4,6 +4,7 @@ import { assertDemoDataIntegrity } from "@/lib/demo-data/integrity";
 import type { DemoData } from "@/lib/demo-data/types";
 import { errorAssistantResult, processAssistantMessage } from "@/lib/assistant/service";
 import { SarvamApiError } from "@/lib/assistant/sarvam";
+import { GeminiApiError } from "@/lib/assistant/gemini";
 
 export const maxDuration = 10;
 
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof SarvamApiError) {
+    if (error instanceof GeminiApiError || error instanceof SarvamApiError) {
       return NextResponse.json(errorAssistantResult(error.kind), { status: 200 });
     }
     if (timeoutSignal.aborted) {

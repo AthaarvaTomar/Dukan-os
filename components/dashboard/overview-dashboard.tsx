@@ -91,7 +91,7 @@ function dateLabel(date: string): string {
 
 function DashboardLoading() {
   return (
-    <div className="mx-auto w-full maxw-[1440px] animate-pulse space-y-7" aria-label="Loading overview" role="status">
+    <div className="mx-auto w-full max-w-[1440px] animate-pulse space-y-7" aria-label="Loading overview" role="status">
       <span className="sr-only">Loading business overview…</span>
       <div className="space-y-3">
         <div className="h-4 w-36 rounded bg-slate-200" />
@@ -101,7 +101,7 @@ function DashboardLoading() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((card) => <div key={card.key} className="h-36 rounded-2xl bg-white shadow-sm" />)}
       </div>
-      <div className="h[360px] rounded-2xl bg-white shadow-sm" />
+      <div className="h-[360px] rounded-2xl bg-white shadow-sm" />
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="h-72 rounded-2xl bg-white shadow-sm" />
         <div className="h-72 rounded-2xl bg-white shadow-sm" />
@@ -271,7 +271,7 @@ export function OverviewDashboard() {
         : "Revenue is unchanged from the previous period.";
 
   return (
-    <div className="mx-auto w-full max-w[1440px] space-y-7">
+    <div className="mx-auto w-full max-w-[1440px] space-y-7">
       <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-2 text-sm font-medium text-slate-500">{todayLabel}</p>

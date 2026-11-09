@@ -10,10 +10,35 @@ import {
   type ClassifiedIntent,
 } from "./intents";
 import {
+  createGeminiCompletion,
+  GeminiApiError,
+  type GeminiCompletion,
+  type GeminiMessage,
+} from "./gemini";
+import {
   createSarvamCompletion,
+  SarvamApiError,
   type SarvamCompletion,
   type SarvamMessage,
 } from "./sarvam";
+
+export type AIProvider = "gemini" | "sarvam";
+
+export function getAiProvider(): AIProvider {
+  const env = process.env.AI_PROVIDER?.toLowerCase().trim();
+  if (env === "sarvam") return "sarvam";
+  if (env === "gemini") return "gemini";
+  if (!process.env.GEMINI_API_KEY && process.env.SARVAM_API_KEY) {
+    return "sarvam";
+  }
+  return "gemini";
+}
+
+export type AssistantMessage = GeminiMessage | SarvamMessage;
+export type AssistantCompletion = (
+  messages: AssistantMessage[],
+  options?: { signal?: AbortSignal; responseMimeType?: "application/json" },
+) => Promise<string>;
 
 export interface AssistantResult {
   reply: string;
@@ -22,9 +47,11 @@ export interface AssistantResult {
 }
 
 export interface AssistantServiceOptions {
-  complete?: SarvamCompletion;
+  complete?: AssistantCompletion;
   apiKey?: string;
   signal?: AbortSignal;
+  provider?: AIProvider;
+  model?: string;
 }
 
 const UNKNOWN_REPLY =
@@ -39,7 +66,13 @@ export async function processAssistantMessage(
   data: DemoData,
   options: AssistantServiceOptions = {},
 ): Promise<AssistantResult> {
-  const complete = options.complete ?? createSarvamCompletion(options.apiKey);
+  const provider = options.provider ?? getAiProvider();
+  const complete: AssistantCompletion =
+    options.complete ??
+    (provider === "sarvam"
+      ? (createSarvamCompletion(options.apiKey) as AssistantCompletion)
+      : createGeminiCompletion(options.apiKey, undefined, options.model));
+
   const classification = await complete(
     [
       {
@@ -49,7 +82,7 @@ export async function processAssistantMessage(
       },
       { role: "user", content: createIntentClassificationPrompt(message) },
     ],
-    { signal: options.signal },
+    { signal: options.signal, responseMimeType: "application/json" },
   );
   const classified: ClassifiedIntent = parseClassifiedIntent(classification, message);
 
@@ -106,4 +139,5 @@ export function errorAssistantResult(kind: "missing_key" | "timeout" | "api_fail
   return { reply, intent: "error", data: null };
 }
 
-export type { SarvamMessage };
+export { GeminiApiError, SarvamApiError };
+export type { GeminiCompletion, GeminiMessage, SarvamCompletion, SarvamMessage };
