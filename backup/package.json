@@ -1,0 +1,12 @@
+{
+  "name": "dukan-os-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix Dukan-os run dev",
+    "build": "npm --prefix Dukan-os run build",
+    "start": "npm --prefix Dukan-os start",
+    "test": "npm --prefix Dukan-os test",
+    "lint": "npm --prefix Dukan-os run lint"
+  }
+}
