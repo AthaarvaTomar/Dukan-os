@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, Store } from "lucide-react";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 
 export default function OnboardingPage() {
-  const router = useRouter();
   const [shopName, setShopName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -21,7 +20,7 @@ export default function OnboardingPage() {
         const businessId = await fetchMyBusinessId(supabase);
         if (!active) return;
         if (businessId) {
-          router.replace("/");
+          navigateAcrossAuthBoundary("/", true);
           return;
         }
         setChecking(false);
@@ -32,7 +31,7 @@ export default function OnboardingPage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -46,11 +45,9 @@ export default function OnboardingPage() {
         p_name: shopName.trim(),
       });
       if (businessError) throw new Error(businessError.message);
-      router.push("/");
-      router.refresh();
+      navigateAcrossAuthBoundary("/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Shop setup failed.");
-    } finally {
       setBusy(false);
     }
   };

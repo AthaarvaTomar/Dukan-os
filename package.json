@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/demo-data.test.ts tests/db-mapping.test.ts tests/whatsapp-integration.test.ts tests/billing.test.ts",
+    "test": "tsx --test tests/demo-data.test.ts tests/db-mapping.test.ts tests/whatsapp-integration.test.ts tests/billing.test.ts tests/auth.test.ts",
     "lint": "eslint"
   },
   "dependencies": {

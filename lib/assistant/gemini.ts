@@ -45,7 +45,7 @@ export async function callGemini(
     responseMimeType?: "application/json";
   } = {},
 ): Promise<string> {
-  const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
+  const apiKey = (options.apiKey ?? process.env.GEMINI_API_KEY)?.trim();
   if (!apiKey) {
     throw new GeminiApiError(
       "The assistant is not configured yet. Please try again later.",
@@ -53,7 +53,7 @@ export async function callGemini(
     );
   }
 
-  const model = options.model ?? process.env.GEMINI_MODEL;
+  const model = (options.model ?? process.env.GEMINI_MODEL)?.trim();
   if (!model) {
     throw new GeminiApiError(
       "The assistant model is not configured. Please set GEMINI_MODEL in your environment.",

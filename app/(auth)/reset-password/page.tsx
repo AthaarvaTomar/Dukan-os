@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, ShieldCheck } from "lucide-react";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 
 export default function ResetPasswordPage() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +28,9 @@ export default function ResetPasswordPage() {
       const supabase = createSupabaseBrowserClient();
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw new Error(updateError.message);
-      router.push("/");
-      router.refresh();
+      navigateAcrossAuthBoundary("/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not update the password.");
-    } finally {
       setBusy(false);
     }
   };

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoaderCircle, Store } from "lucide-react";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 
 /**
  * Build-time/prerender fallback for the dashboard layout: sends the visitor to
@@ -16,11 +16,9 @@ export function AuthRedirect({
   to?: string;
   message?: string;
 }) {
-  const router = useRouter();
-
   useEffect(() => {
-    router.replace(to);
-  }, [router, to]);
+    navigateAcrossAuthBoundary(to, true);
+  }, [to]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#f7f8fa] px-4 text-slate-900">

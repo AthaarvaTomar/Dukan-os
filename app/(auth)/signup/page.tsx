@@ -2,11 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, UserPlus } from "lucide-react";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 
 export default function SignupPage() {
-  const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [shopName, setShopName] = useState("");
   const [email, setEmail] = useState("");
@@ -26,7 +25,10 @@ export default function SignupPage() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName.trim() } },
+        options: {
+          data: { full_name: fullName.trim() },
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        },
       });
       if (signUpError) throw new Error(signUpError.message);
 
@@ -34,6 +36,7 @@ export default function SignupPage() {
         setInfo(
           "Account created. Check your email for a confirmation link, then sign in to finish setting up your shop.",
         );
+        setBusy(false);
         return;
       }
 
@@ -41,11 +44,9 @@ export default function SignupPage() {
         p_name: shopName.trim(),
       });
       if (businessError) throw new Error(businessError.message);
-      router.push("/");
-      router.refresh();
+      navigateAcrossAuthBoundary("/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Registration failed.");
-    } finally {
       setBusy(false);
     }
   };

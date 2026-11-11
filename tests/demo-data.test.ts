@@ -666,17 +666,17 @@ test("Gemini client uses endpoint with model from env, x-goog-api-key header, an
   assert.equal(genConfig?.responseMimeType, "application/json");
   assert.equal(genConfig?.temperature, 0);
 
-  // Missing key test
+  // Missing / whitespace-only key test
   await assert.rejects(
-    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "" }),
+    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "   " }),
     (error: unknown) => error instanceof GeminiApiError && error.kind === "missing_key",
   );
 
-  // Missing model test
+  // Missing / whitespace-only model test
   const savedModel = process.env.GEMINI_MODEL;
   delete process.env.GEMINI_MODEL;
   await assert.rejects(
-    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "key", model: "" }),
+    () => callGemini([{ role: "user", content: "hi" }], { apiKey: "key", model: "  " }),
     (error: unknown) => error instanceof GeminiApiError && error.kind === "missing_key",
   );
   process.env.GEMINI_MODEL = savedModel;

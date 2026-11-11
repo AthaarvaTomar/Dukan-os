@@ -1,20 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { readSupabasePublicEnv } from "@/lib/supabase/env";
 
 const PROTECTED_PATHS = ["/", "/billing", "/customers", "/marketing", "/inventory", "/insights", "/ai-assistant", "/settings", "/onboarding"];
 const AUTH_PATHS = ["/login", "/signup", "/forgot-password"];
 
+function matchesPrefix(pathname: string, paths: readonly string[]): boolean {
+  return paths.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(`${p}/`)));
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
+  const env = readSupabasePublicEnv();
+  if (!env) {
     // Supabase not configured yet: leave routing alone so demo/dev still works.
     return { response, user: null, configured: false };
   }
 
-  const supabase = createServerClient(url, anonKey, {
+  const supabase = createServerClient(env.url, env.anonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -36,9 +40,9 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isProtected =
-    PROTECTED_PATHS.includes(pathname) || pathname.startsWith("/auth/");
-  const isAuthPage = AUTH_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  // Never guard /auth/callback — confirmation and password-reset links arrive unauthenticated.
+  const isProtected = matchesPrefix(pathname, PROTECTED_PATHS);
+  const isAuthPage = matchesPrefix(pathname, AUTH_PATHS);
 
   if (!user && isProtected) {
     const redirectUrl = request.nextUrl.clone();

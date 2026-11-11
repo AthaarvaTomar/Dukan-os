@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Bell, LoaderCircle, LogOut, Menu, Store, X } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BusinessProvider } from "@/components/dashboard/business-context";
 import { businessActions } from "@/lib/db/store";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 import { cn } from "@/lib/utils";
 import { getNavigationItem, navigationGroups } from "@/lib/navigation";
 
@@ -169,7 +170,6 @@ export function DashboardShell({
   businessName: string;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const activeItem = getNavigationItem(pathname);
@@ -182,9 +182,8 @@ export function DashboardShell({
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
       await businessActions.reset();
-      router.push("/login");
-      router.refresh();
-    } finally {
+      navigateAcrossAuthBoundary("/login");
+    } catch {
       setSigningOut(false);
     }
   };

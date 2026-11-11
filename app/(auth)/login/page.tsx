@@ -2,8 +2,9 @@
 
 import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { LoaderCircle, LogIn } from "lucide-react";
+import { navigateAcrossAuthBoundary } from "@/lib/supabase/env";
 
 export default function LoginPage() {
   return (
@@ -14,11 +15,10 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => searchParams.get("error"));
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -31,12 +31,9 @@ function LoginForm() {
       const supabase = createSupabaseBrowserClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw new Error(signInError.message);
-      const next = searchParams.get("next");
-      router.push(next && next.startsWith("/") ? next : "/");
-      router.refresh();
+      navigateAcrossAuthBoundary(searchParams.get("next") ?? "/");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Sign in failed.");
-    } finally {
       setBusy(false);
     }
   };

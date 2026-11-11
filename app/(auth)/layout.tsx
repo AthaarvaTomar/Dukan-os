@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#f7f8fa] px-4 py-10 text-slate-900">
-      <Link href="/" className="mb-8 flex items-center gap-3" aria-label="DukaanOS home">
+      <Link href="/" prefetch={false} className="mb-8 flex items-center gap-3" aria-label="DukaanOS home">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-300 text-slate-950">
           <Store size={22} strokeWidth={2.2} aria-hidden="true" />
         </span>
