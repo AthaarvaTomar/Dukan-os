@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Package,
+  Receipt,
   Settings2,
   UsersRound,
   type LucideIcon,
@@ -23,6 +24,7 @@ export const navigationGroups: {
     label: "Workspace",
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
+      { href: "/billing", label: "Billing", icon: Receipt },
       { href: "/ai-assistant", label: "AI Assistant", icon: Bot },
       { href: "/customers", label: "Customers", icon: UsersRound },
       { href: "/marketing", label: "Marketing Campaigns", icon: Megaphone },

@@ -633,7 +633,7 @@ export function AiAssistant() {
                 </div>
               </details>
               <p className="mt-2 text-xs text-amber-900">
-                Nothing will be sent. Approval records this campaign as simulated in demo mode.
+                Nothing will be sent. Approval executes this campaign in demo mode (demo_executed).
               </p>
             </div>
             <button
@@ -647,7 +647,7 @@ export function AiAssistant() {
               ) : (
                 <Check size={16} aria-hidden="true" />
               )}
-              Approve simulated campaign
+              Approve demo campaign
             </button>
           </div>
         </section>

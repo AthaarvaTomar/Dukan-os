@@ -31,6 +31,11 @@ cp .env.example .env.local
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key — server only, never expose |
 | `SARVAM_API_KEY` | Optional: Sarvam Voice Agents API key |
 | `SARVAM_TOOL_API_TOKEN` | Optional: webhook bearer token for Sarvam voice tools |
+| `WHATSAPP_ACCESS_TOKEN` | Future: Meta WhatsApp Cloud API token (server-only) |
+| `WHATSAPP_PHONE_NUMBER_ID` | Future: Meta WhatsApp Business Phone Number ID (server-only) |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | Future: Meta WhatsApp Business Account ID (server-only) |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Future: Webhook verification token (server-only) |
+| `WHATSAPP_APP_SECRET` | Future: Meta App Secret for HMAC webhook signature validation (server-only) |
 
 ## Routes
 

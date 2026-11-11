@@ -415,14 +415,17 @@ export function OverviewDashboard() {
             <div className="divide-y divide-slate-100">
               {latestTransactions.map((transaction, index) => {
                 const customer = data.customers.find((entry) => entry.id === transaction.customerId);
-                const initials = customer?.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("") ?? "—";
+                const customerLabel = customer?.name ?? (transaction.customerId ? "Unknown customer" : "Walk-in");
+                const initials = customer
+                  ? customer.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")
+                  : "WI";
                 return (
                   <div key={transaction.id} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
                     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${["bg-rose-100 text-rose-700", "bg-sky-100 text-sky-700", "bg-violet-100 text-violet-700", "bg-amber-100 text-amber-700", "bg-emerald-100 text-emerald-700"][index]}`}>
                       {initials}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-800">{customer?.name ?? "Unknown customer"}</p>
+                      <p className="truncate text-sm font-medium text-slate-800">{customerLabel}</p>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
                         {transaction.items.map((item) => item.productName).join(", ")} · {dateLabel(transaction.date)}
                       </p>

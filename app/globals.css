@@ -27,3 +27,13 @@ button,
 input {
   font: inherit;
 }
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

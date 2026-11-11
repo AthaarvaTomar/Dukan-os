@@ -1053,11 +1053,13 @@ test("business tools use server demo calculations and require the webhook bearer
       messages: Array<{ status: string; customerId: string }>;
     }) =>
       campaign.id === draft.campaign.id &&
-      campaign.status === "simulated" &&
+      (campaign.status === "demo_executed" || campaign.status === "simulated") &&
       campaign.successfulCount === draft.eligibleCustomerCount &&
       campaign.failedCount === 0 &&
       campaign.messages.length === draft.eligibleCustomerCount &&
-      campaign.messages.every((message) => message.status === "simulated" && message.customerId),
+      campaign.messages.every((message) =>
+        (message.status === "demo_executed" || message.status === "simulated") && Boolean(message.customerId)
+      ),
     ));
 
     const createResponse = await voiceCampaignsPost(

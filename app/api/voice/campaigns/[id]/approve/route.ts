@@ -16,8 +16,10 @@ export async function POST(
       campaign: result.campaign,
       successfulCount: result.successfulCount,
       failedCount: result.failedCount,
-      simulated: true,
-      message: "Campaign recorded as simulated. No messages were sent.",
+      executionMode: result.campaign.executionMode ?? "demo",
+      status: result.campaign.status,
+      simulated: result.campaign.status === "demo_executed" || result.campaign.status === "simulated",
+      message: "Campaign recorded as demo_executed in demo mode. No messages were sent.",
     });
   }
 
@@ -26,13 +28,15 @@ export async function POST(
     return Response.json({ error: "This campaign draft is no longer available." }, { status: 404 });
   }
   if (result.duplicate) {
-    return Response.json({ error: "This campaign was already simulated." }, { status: 409 });
+    return Response.json({ error: "This campaign was already executed in demo mode." }, { status: 409 });
   }
   return Response.json({
     campaign: result.execution.campaign,
     successfulCount: result.execution.successfulCount,
     failedCount: result.execution.failedCount,
+    executionMode: "demo",
+    status: result.execution.status,
     simulated: true,
-    message: "Campaign recorded as simulated. No messages were sent.",
+    message: "Campaign recorded as demo_executed in demo mode. No messages were sent.",
   });
 }

@@ -22,16 +22,28 @@ import {
   upsertSupplierOrderRow,
   type AdjustStockResult,
 } from "@/lib/db/queries";
-import { mapProduct, mapTransactions, type ProductRow } from "@/lib/db/mapping";
+import {
+  mapCustomer,
+  mapProduct,
+  mapStockMovement,
+  mapTransactions,
+  type CustomerRow,
+  type ProductRow,
+  type StockMovementRow,
+} from "@/lib/db/mapping";
+import { calculateBill, validateBillItems } from "@/lib/billing";
 import { upsertById } from "@/lib/demo-data/storage";
 import type {
   Customer,
   DemoData,
   Expense,
   MarketingCampaign,
+  PaymentMethod,
   Product,
   StockOperation,
   SupplierOrderDraft,
+  Transaction,
+  TransactionStatus,
 } from "@/lib/demo-data/types";
 
 export type StoreStatus = "loading" | "ready" | "error" | "anonymous";
@@ -167,6 +179,113 @@ async function runWrite<T>(action: () => Promise<T>): Promise<T | null> {
   }
 }
 
+export interface CreateSaleInput {
+  customerId: string;
+  date: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    unitCost: number;
+  }>;
+  discount: number;
+  paymentMethod: PaymentMethod;
+  status: TransactionStatus;
+}
+
+export type CreateSaleResult =
+  | { ok: true; transaction: Transaction }
+  | { ok: false; error: string };
+
+async function fetchAfterSaleMutation(db: SupabaseClient, activeBusinessId: string) {
+  const [{ sales, saleItems }, products, customers, stockMovements] = await Promise.all([
+    fetchSalesData(db, activeBusinessId),
+    db.from("products").select("*").eq("business_id", activeBusinessId),
+    db.from("customers").select("*").eq("business_id", activeBusinessId),
+    db
+      .from("stock_movements")
+      .select("*")
+      .eq("business_id", activeBusinessId)
+      .order("created_at", { ascending: false }),
+  ]);
+  const firstError = [products, customers, stockMovements].find((res) => res.error)?.error;
+  if (firstError) throw new Error(firstError.message);
+
+  return {
+    asOf: new Date().toISOString(),
+    transactions: mapTransactions(sales, saleItems),
+    products: (products.data ?? []).map((row) => mapProduct(row as ProductRow)),
+    customers: (customers.data ?? []).map((row) => mapCustomer(row as CustomerRow)),
+    inventoryMovements: (stockMovements.data ?? []).map((row) =>
+      mapStockMovement(row as StockMovementRow),
+    ),
+  };
+}
+
+/**
+ * Validates stock rules cleanly and executes `create_sale` against Supabase,
+ * returning the updated snapshot + created transaction without clobbering UI state on error.
+ */
+export async function performCreateSale(
+  db: SupabaseClient,
+  activeBusinessId: string | null,
+  snapshot: DemoData,
+  sale: CreateSaleInput,
+): Promise<{ ok: true; data: DemoData; transaction: Transaction } | { ok: false; error: string }> {
+  if (!activeBusinessId) {
+    return { ok: false, error: "Shop session is not ready yet." };
+  }
+
+  const validation = validateBillItems(sale.items, snapshot.products);
+  if (!validation.ok) {
+    return { ok: false, error: validation.error };
+  }
+
+  const productById = new Map(snapshot.products.map((product) => [product.id, product]));
+  const normalizedItems = validation.mergedItems.map((item) => {
+    const product = productById.get(item.productId)!;
+    return {
+      productId: product.id,
+      productName: product.name,
+      quantity: item.quantity,
+      unitPrice: product.price,
+      unitCost: product.costPrice,
+    };
+  });
+
+  try {
+    const saleId = await createSaleRpc(db, activeBusinessId, {
+      ...sale,
+      items: normalizedItems,
+    });
+    const refreshed = await fetchAfterSaleMutation(db, activeBusinessId);
+    const updatedData: DemoData = {
+      ...snapshot,
+      ...refreshed,
+    };
+    const { subtotal, grandTotal } = calculateBill(validation.mergedItems, snapshot.products);
+    const createdTransaction: Transaction =
+      refreshed.transactions.find((entry) => entry.id === saleId) ?? {
+        id: saleId,
+        customerId: sale.customerId,
+        date: sale.date,
+        items: normalizedItems,
+        subtotal,
+        discount: sale.discount,
+        totalAmount: Math.max(0, grandTotal - sale.discount),
+        paymentMethod: sale.paymentMethod,
+        status: sale.status,
+      };
+    return { ok: true, data: updatedData, transaction: createdTransaction };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "The bill could not be saved.",
+    };
+  }
+}
+
 export const businessActions = {
   async upsertCustomer(record: Customer): Promise<boolean> {
     if (!businessId) return false;
@@ -279,52 +398,27 @@ export const businessActions = {
 
   /**
    * Creates a sale through the transactional RPC (deducts stock, logs
-   * movements), then refreshes sales and products from the database.
+   * movements, updates customer totals), then refreshes sales, products, customers, and movements.
    */
-  async createSale(sale: {
-    customerId: string;
-    date: string;
-    items: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; unitCost: number }>;
-    discount: number;
-    paymentMethod: string;
-    status: string;
-  }): Promise<boolean> {
-    if (!businessId) return false;
-    const result = await runWrite(async () => {
-      await createSaleRpc(client(), businessId!, sale);
-      const [{ sales, saleItems }, products] = await Promise.all([
-        fetchSalesData(client(), businessId!),
-        client().from("products").select("*").eq("business_id", businessId!),
-      ]);
-      if (products.error) throw new Error(products.error.message);
-      return { sales, saleItems, products: (products.data ?? []).map((row) => mapProduct(row as ProductRow)) };
-    });
-    if (!result) return false;
-    currentData = {
-      ...currentData,
-      transactions: mapTransactions(result.sales, result.saleItems),
-      products: result.products,
-    };
+  async createSale(sale: CreateSaleInput): Promise<CreateSaleResult> {
+    const outcome = await performCreateSale(client(), businessId, currentData, sale);
+    if (!outcome.ok) return outcome;
+    currentData = outcome.data;
     notify();
-    return true;
+    return { ok: true, transaction: outcome.transaction };
   },
 
   /** Cancels a sale: the database restores stock and marks the sale cancelled. */
   async cancelSale(saleId: string): Promise<boolean> {
+    if (!businessId) return false;
     const result = await runWrite(async () => {
       await cancelSaleRpc(client(), saleId);
-      const [{ sales, saleItems }, products] = await Promise.all([
-        fetchSalesData(client(), businessId!),
-        client().from("products").select("*").eq("business_id", businessId!),
-      ]);
-      if (products.error) throw new Error(products.error.message);
-      return { sales, saleItems, products: (products.data ?? []).map((row) => mapProduct(row as ProductRow)) };
+      return fetchAfterSaleMutation(client(), businessId!);
     });
     if (!result) return false;
     currentData = {
       ...currentData,
-      transactions: mapTransactions(result.sales, result.saleItems),
-      products: result.products,
+      ...result,
     };
     notify();
     return true;

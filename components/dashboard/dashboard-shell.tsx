@@ -202,7 +202,7 @@ export function DashboardShell({
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[268px] transition-transform duration-200 lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:shrink-0 lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-[268px] transition-transform duration-200 print:hidden lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:shrink-0 lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -218,7 +218,7 @@ export function DashboardShell({
 
       <div className="min-w-0 flex-1">
         <Toaster position="top-right" />
-        <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-9">
+        <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur print:hidden sm:px-6 lg:px-9">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="ghost"
@@ -273,7 +273,7 @@ export function DashboardShell({
             </div>
           </div>
         </header>
-        <main className="px-4 py-7 sm:px-6 sm:py-8 lg:px-9 lg:py-9">{children}</main>
+        <main className="px-4 py-7 print:p-0 sm:px-6 sm:py-8 lg:px-9 lg:py-9">{children}</main>
       </div>
     </div>
     </BusinessProvider>

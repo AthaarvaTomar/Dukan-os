@@ -4,7 +4,9 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Info,
   LoaderCircle,
+  Lock,
   Megaphone,
   Pencil,
   RefreshCw,
@@ -22,7 +24,7 @@ interface CampaignMessage {
   customerSegment: string;
   discountPercent: number;
   message: string;
-  status: "draft" | "simulated" | "failed";
+  status: "draft" | "approved" | "demo_executed" | "simulated" | "failed";
   result: string | null;
 }
 
@@ -34,6 +36,7 @@ interface CampaignDraft {
     channel: string;
     status: string;
     audienceSize: number;
+    executionMode?: "demo" | "whatsapp";
   };
   message: string;
   eligibleCustomerCount: number;
@@ -46,6 +49,7 @@ interface CampaignHistory {
   name: string;
   channel: string;
   status: string;
+  executionMode?: "demo" | "whatsapp";
   audienceSize: number;
   successfulCount: number | null;
   failedCount: number | null;
@@ -69,6 +73,11 @@ function campaignErrorMessage(error: unknown): string {
 export function MarketingCampaigns() {
   const [campaign, setCampaign] = useState<CampaignDraft | null>(null);
   const [history, setHistory] = useState<CampaignHistory[]>([]);
+  const [executionMode, setExecutionMode] = useState<"demo" | "whatsapp">("demo");
+  const [isWhatsAppConfigured, setIsWhatsAppConfigured] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState<string>(
+    "Real WhatsApp integration is not configured yet. Campaigns will run in demo mode.",
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -78,8 +87,29 @@ export function MarketingCampaigns() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await fetch("/api/voice/campaigns/settings", { cache: "no-store" });
+      if (response.ok) {
+        const data = (await response.json()) as {
+          mode: "demo" | "whatsapp";
+          isWhatsAppConfigured: boolean;
+          message: string;
+        };
+        setExecutionMode(data.mode ?? "demo");
+        setIsWhatsAppConfigured(Boolean(data.isWhatsAppConfigured));
+        if (data.message) {
+          setSettingsNotice(data.message);
+        }
+      }
+    } catch {
+      // Retain default safe settings
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
+      await loadSettings();
       const response = await fetch("/api/voice/campaigns", { cache: "no-store" });
       if (!response.ok) throw new Error("Campaign data could not be loaded.");
       const result: {
@@ -94,7 +124,15 @@ export function MarketingCampaigns() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [loadSettings]);
+
+  const handleSelectMode = (mode: "demo" | "whatsapp") => {
+    if (mode === "whatsapp" && !isWhatsAppConfigured) {
+      setError("Real WhatsApp integration is not configured yet. Campaigns will run in demo mode.");
+      return;
+    }
+    setExecutionMode(mode);
+  };
 
   useEffect(() => {
     void Promise.resolve().then(refresh);
@@ -247,6 +285,84 @@ export function MarketingCampaigns() {
           {error}
         </p>
       )}
+
+      {/* Campaign Execution Settings */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">Campaign Execution Mode</h2>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                Active: {executionMode === "demo" ? "Simulated / Demo" : "Real WhatsApp"}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Configure whether approved campaigns run in safe simulation or dispatch via Meta Cloud API.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSelectMode("demo")}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                executionMode === "demo"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <Check size={14} className={executionMode === "demo" ? "opacity-100" : "opacity-0"} aria-hidden="true" />
+              Simulated / Demo
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectMode("whatsapp")}
+              disabled={!isWhatsAppConfigured}
+              title={
+                !isWhatsAppConfigured
+                  ? "Real WhatsApp integration is not configured yet. Campaigns will run in demo mode."
+                  : "Switch to official WhatsApp Cloud API sending"
+              }
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                executionMode === "whatsapp"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : isWhatsAppConfigured
+                    ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    : "cursor-not-allowed border border-slate-200 bg-slate-50 text-slate-400 opacity-75"
+              }`}
+            >
+              {!isWhatsAppConfigured ? (
+                <Lock size={12} className="text-slate-400" aria-hidden="true" />
+              ) : (
+                <Check size={14} className={executionMode === "whatsapp" ? "opacity-100" : "opacity-0"} aria-hidden="true" />
+              )}
+              Real WhatsApp
+              {!isWhatsAppConfigured && (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                  Not Configured
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Clear status notice for WhatsApp configuration */}
+        {!isWhatsAppConfigured && (
+          <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+            <Info size={16} className="mt-0.5 shrink-0 text-amber-700" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-amber-950">
+                {settingsNotice}
+              </p>
+              <p className="mt-0.5 text-amber-800">
+                Meta WhatsApp Cloud API credentials (access token, phone number ID, and app secret) must be configured on the server before live customer messaging can be enabled.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
       {isLoading && (
         <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
           <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
@@ -258,7 +374,12 @@ export function MarketingCampaigns() {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-lime-700">Review before simulated execution</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-lime-700">Review before execution</p>
+                <span className="rounded bg-lime-100 px-2 py-0.5 text-[11px] font-semibold text-lime-800">
+                  Mode: Demo Only
+                </span>
+              </div>
               <h2 className="mt-1 text-lg font-semibold text-slate-950">{campaign.campaign.name}</h2>
               <p className="mt-1 text-sm text-slate-600">
                 {campaign.eligibleCustomerCount} eligible customers · {campaign.discountPercent}% discount · {campaign.campaign.channel}
@@ -278,7 +399,7 @@ export function MarketingCampaigns() {
               ) : (
                 <Check size={16} aria-hidden="true" />
               )}
-              Approve &amp; simulate
+              Approve demo campaign
             </button>
           </div>
 
@@ -384,16 +505,22 @@ export function MarketingCampaigns() {
                     className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50"
                   >
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                      entry.status === "simulated"
+                      entry.status === "demo_executed" || entry.status === "simulated"
                         ? "bg-blue-50 text-blue-700"
-                        : "bg-slate-100 text-slate-600"
+                        : entry.status === "draft"
+                          ? "bg-amber-50 text-amber-700"
+                          : "bg-slate-100 text-slate-600"
                     }`}>
-                      {entry.status === "simulated" ? "Simulated" : entry.status}
+                      {entry.status === "demo_executed" || entry.status === "simulated"
+                        ? "Demo Executed"
+                        : entry.status === "approved"
+                          ? "Approved"
+                          : entry.status}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-slate-900">{entry.name}</span>
                       <span className="mt-0.5 block text-xs text-slate-500">
-                        {entry.audienceSize} customers · {entry.channel}
+                        {entry.audienceSize} customers · {entry.channel} · Mode: {entry.executionMode === "whatsapp" ? "Real WhatsApp" : "Demo"}
                         {entry.successfulCount !== null
                           ? ` · ${entry.successfulCount} successful · ${entry.failedCount ?? 0} failed`
                           : ""}
@@ -417,9 +544,13 @@ export function MarketingCampaigns() {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-sm font-medium text-slate-800">{message.customerName}</p>
                               <span className={`text-xs font-medium ${
-                                message.status === "simulated" ? "text-blue-700" : "text-red-700"
+                                message.status === "demo_executed" || message.status === "simulated"
+                                  ? "text-blue-700"
+                                  : "text-red-700"
                               }`}>
-                                {message.status === "simulated" ? "Simulated, not delivered" : "Simulation failed"}
+                                {message.status === "demo_executed" || message.status === "simulated"
+                                  ? "Demo Executed (Simulated)"
+                                  : "Simulation failed"}
                               </span>
                             </div>
                             <p className="mt-1 text-xs leading-5 text-slate-600">{message.message}</p>

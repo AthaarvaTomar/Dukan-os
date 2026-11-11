@@ -59,6 +59,7 @@ export function bestSellingProducts(
   const productIds = new Set(products.map((product) => product.id));
   for (const transaction of transactions) {
     for (const item of transaction.items) {
+      if (!item.productId) continue;
       if (!productIds.has(item.productId)) {
         throw new Error(`Transaction ${transaction.id} references an unknown product.`);
       }
@@ -107,16 +108,26 @@ export function customerSpending(
   }
 
   for (const transaction of transactions) {
+    if (!transaction.customerId) continue;
     const customer = spending.get(transaction.customerId);
     if (!customer) {
       throw new Error(`Transaction ${transaction.id} references an unknown customer.`);
     }
     customer.transactionCount += 1;
     customer.totalSpent += transaction.totalAmount;
-    if (!customer.firstPurchaseAt || transaction.date < customer.firstPurchaseAt) {
+    const txnTime = Date.parse(transaction.date);
+    const firstTime = customer.firstPurchaseAt ? Date.parse(customer.firstPurchaseAt) : Number.NaN;
+    const lastTime = customer.lastPurchaseAt ? Date.parse(customer.lastPurchaseAt) : Number.NaN;
+    if (
+      !customer.firstPurchaseAt ||
+      (Number.isFinite(txnTime) && Number.isFinite(firstTime) ? txnTime < firstTime : transaction.date < customer.firstPurchaseAt)
+    ) {
       customer.firstPurchaseAt = transaction.date;
     }
-    if (!customer.lastPurchaseAt || transaction.date > customer.lastPurchaseAt) {
+    if (
+      !customer.lastPurchaseAt ||
+      (Number.isFinite(txnTime) && Number.isFinite(lastTime) ? txnTime > lastTime : transaction.date > customer.lastPurchaseAt)
+    ) {
       customer.lastPurchaseAt = transaction.date;
     }
   }

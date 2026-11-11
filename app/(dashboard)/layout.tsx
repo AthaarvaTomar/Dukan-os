@@ -1,14 +1,10 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { AuthRedirect } from "@/components/dashboard/auth-redirect";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { fetchMyBusinessId } from "@/lib/db/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+async function AuthenticatedDashboard({ children }: { children: ReactNode }) {
   // Supabase not configured (e.g. before .env.local is filled in): send the
   // visitor to sign-in gracefully instead of failing the render.
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>> | null = null;
@@ -45,5 +41,23 @@ export default async function DashboardLayout({
     >
       {children}
     </DashboardShell>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#f7f8fa] text-sm text-slate-500">
+          Loading workspace…
+        </div>
+      }
+    >
+      <AuthenticatedDashboard>{children}</AuthenticatedDashboard>
+    </Suspense>
   );
 }

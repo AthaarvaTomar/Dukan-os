@@ -97,6 +97,7 @@ export interface CampaignRow {
   name: string;
   channel: string;
   status: string;
+  execution_mode?: string;
   start_date: string;
   end_date: string;
   budget: number;
@@ -182,7 +183,15 @@ function asChannel(value: string): MarketingCampaign["channel"] {
 }
 
 function asCampaignStatus(value: string): CampaignStatus {
-  return ["draft", "scheduled", "active", "completed", "simulated"].includes(value)
+  return [
+    "draft",
+    "approved",
+    "demo_executed",
+    "scheduled",
+    "active",
+    "completed",
+    "simulated",
+  ].includes(value)
     ? (value as CampaignStatus)
     : "draft";
 }
@@ -253,6 +262,7 @@ export function mapCampaign(row: CampaignRow): MarketingCampaign {
     name: row.name,
     channel: asChannel(row.channel),
     status: asCampaignStatus(row.status),
+    executionMode: row.execution_mode === "whatsapp" ? "whatsapp" : "demo",
     startDate: row.start_date,
     endDate: row.end_date,
     budget: Number(row.budget),

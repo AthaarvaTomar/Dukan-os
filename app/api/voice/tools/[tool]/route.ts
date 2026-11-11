@@ -55,7 +55,7 @@ const campaignDraftSchema = z.object({
     customerSegment: z.string(),
     discountPercent: z.number(),
     message: z.string(),
-    status: z.enum(["draft", "simulated", "failed"]),
+    status: z.enum(["draft", "approved", "demo_executed", "simulated", "failed"]),
     result: z.string().nullable(),
   })),
 });

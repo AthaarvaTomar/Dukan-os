@@ -35,10 +35,10 @@ export async function fetchBusinessData(db: Db, businessId: string): Promise<Dem
     await Promise.all([
       db.from("customers").select("*").eq("business_id", businessId),
       db.from("products").select("*").eq("business_id", businessId),
-      db.from("sales").select("*").eq("business_id", businessId),
+      db.from("sales").select("*").eq("business_id", businessId).order("date", { ascending: false }),
       db.from("sale_items").select("*").eq("business_id", businessId),
       db.from("expenses").select("*").eq("business_id", businessId),
-      db.from("stock_movements").select("*").eq("business_id", businessId),
+      db.from("stock_movements").select("*").eq("business_id", businessId).order("created_at", { ascending: false }),
       db.from("campaigns").select("*").eq("business_id", businessId),
       db.from("supplier_orders").select("*").eq("business_id", businessId),
     ]);
@@ -62,7 +62,7 @@ export async function fetchBusinessData(db: Db, businessId: string): Promise<Dem
 
 export async function fetchSalesData(db: Db, businessId: string) {
   const [sales, saleItems] = await Promise.all([
-    db.from("sales").select("*").eq("business_id", businessId),
+    db.from("sales").select("*").eq("business_id", businessId).order("date", { ascending: false }),
     db.from("sale_items").select("*").eq("business_id", businessId),
   ]);
   if (sales.error) throw new Error(sales.error.message);
@@ -170,7 +170,7 @@ export async function createSaleRpc(
     p_discount: sale.discount,
     p_payment_method: sale.paymentMethod,
     p_status: sale.status,
-    p_items: JSON.stringify(sale.items),
+    p_items: sale.items,
   });
   if (error) throw new Error(error.message);
   return (Array.isArray(data) ? data[0] : data) as string;

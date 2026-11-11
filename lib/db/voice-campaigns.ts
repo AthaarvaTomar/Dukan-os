@@ -14,6 +14,11 @@ import type {
   PersonalizedCampaignMessage,
   VoiceCampaignDraft,
 } from "@/lib/demo-data/server-store";
+import {
+  getExecutionProvider,
+  type CampaignExecutionMode,
+  type CampaignRecipientMessage,
+} from "@/lib/campaigns";
 
 /**
  * Resolves the business context for server-side routes:
@@ -63,6 +68,8 @@ function recipientToDraftMessage(
   lastPurchaseAt: string | null,
   customerSegment: string,
 ): PersonalizedCampaignMessage {
+  const isExecuted =
+    row.status === "demo_executed" || row.status === "sent" || row.status === "simulated";
   return {
     customerId: row.customer_id ?? "",
     customerName: row.customer_name,
@@ -72,8 +79,8 @@ function recipientToDraftMessage(
     customerSegment,
     discountPercent,
     message: row.message,
-    status: row.status === "sent" ? "simulated" : row.status === "failed" ? "failed" : "draft",
-    result: row.status === "sent" ? "Simulated — no message was sent." : null,
+    status: isExecuted ? "demo_executed" : row.status === "failed" ? "failed" : "draft",
+    result: isExecuted ? "Demo executed — no real WhatsApp message was sent." : null,
   };
 }
 
@@ -245,8 +252,7 @@ export async function approveDraftDb(
     .limit(1);
   if (campaignError) throw new Error(campaignError.message);
   const campaignRow = (campaignRows ?? [])[0] as CampaignRowWithSummary | undefined;
-  if (!campaignRow) return null;
-  if (campaignRow.status !== "draft") return null;
+  if (!campaignRow || campaignRow.status !== "draft") return null;
 
   const { data: recipientRows, error: recipientsError } = await db
     .from("campaign_recipients")
@@ -255,36 +261,40 @@ export async function approveDraftDb(
   if (recipientsError) throw new Error(recipientsError.message);
   const recipients = (recipientRows ?? []) as RecipientRow[];
 
-  const { error: updateRecipientsError } = await db
-    .from("campaign_recipients")
-    .update({ status: "sent" })
-    .eq("campaign_id", campaignId);
-  if (updateRecipientsError) throw new Error(updateRecipientsError.message);
+  const executionMode = (
+    campaignRow.execution_mode === "whatsapp" ? "whatsapp" : "demo"
+  ) as CampaignExecutionMode;
+  const provider = getExecutionProvider(executionMode);
+  const discount = extractDiscount(campaignRow.summary_message);
 
-  if (recipients.length > 0) {
-    const { error: logsError } = await db.from("message_logs").insert(
-      recipients.map((recipient) => ({
-        business_id: businessId,
-        campaign_id: campaignId,
-        customer_id: recipient.customer_id,
-        channel: campaignRow.channel,
-        body: recipient.message,
-        status: "sent",
-      })),
-    );
-    if (logsError) throw new Error(logsError.message);
-  }
+  const recipientMessages: CampaignRecipientMessage[] = recipients.map((r) => ({
+    customerId: r.customer_id ?? "",
+    customerName: r.customer_name,
+    previousPurchase: null,
+    productCategory: null,
+    lastPurchaseAt: null,
+    customerSegment: "inactive",
+    discountPercent: discount,
+    message: r.message,
+    status: "draft",
+    result: null,
+  }));
 
-  const { error: updateCampaignError } = await db
-    .from("campaigns")
-    .update({ status: "simulated", sent_count: recipients.length })
-    .eq("id", campaignId);
-  if (updateCampaignError) throw new Error(updateCampaignError.message);
+  const result = await provider.executeCampaign({
+    businessId,
+    campaignId,
+    campaignName: campaignRow.name,
+    channel: "WhatsApp",
+    discountPercent: discount,
+    messages: recipientMessages,
+    isExplicitlyApproved: true,
+    db,
+  });
 
   return {
-    campaign: mapCampaign({ ...campaignRow, status: "simulated", sent_count: recipients.length }),
-    successfulCount: recipients.length,
-    failedCount: 0,
+    campaign: result.campaign,
+    successfulCount: result.successfulCount,
+    failedCount: result.failedCount,
   };
 }
 
@@ -308,12 +318,15 @@ export async function getCampaignHistoryDb(
       .eq("campaign_id", raw.id);
     const recipients = (recipientRows ?? []) as RecipientRow[];
     const discount = extractDiscount(raw.summary_message);
+    const isExecutionStatus = (status: string) =>
+      status === "demo_executed" || status === "sent" || status === "simulated";
     records.push({
       campaignId: raw.id,
       draftId: raw.id,
       campaign: mapCampaign(raw as CampaignRow),
+      executionMode: raw.execution_mode === "whatsapp" ? "whatsapp" : "demo",
       executedAt: raw.updated_at ?? raw.created_at,
-      successfulCount: recipients.filter((r) => r.status === "sent").length,
+      successfulCount: recipients.filter((r) => isExecutionStatus(r.status)).length,
       failedCount: recipients.filter((r) => r.status === "failed").length,
       messages: recipients.map((row) =>
         recipientToDraftMessage(row, discount, null, null, null, "inactive"),

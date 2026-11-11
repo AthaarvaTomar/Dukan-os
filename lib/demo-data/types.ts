@@ -16,7 +16,14 @@ export type ExpenseCategory =
   | "Transport"
   | "Marketing"
   | "Maintenance";
-export type CampaignStatus = "draft" | "scheduled" | "active" | "completed" | "simulated";
+export type CampaignStatus =
+  | "draft"
+  | "approved"
+  | "demo_executed"
+  | "scheduled"
+  | "active"
+  | "completed"
+  | "simulated";
 
 export interface Customer {
   id: string;
@@ -109,6 +116,7 @@ export interface MarketingCampaign {
   name: string;
   channel: "WhatsApp" | "Instagram" | "In-store" | "SMS";
   status: CampaignStatus;
+  executionMode?: "demo" | "whatsapp";
   startDate: string;
   endDate: string;
   budget: number;

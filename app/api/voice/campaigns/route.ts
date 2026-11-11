@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         const execution = executions.find((record) => record.campaignId === campaign.id);
         return {
           ...campaign,
+          executionMode: execution?.executionMode ?? campaign.executionMode ?? "demo",
           successfulCount: execution?.successfulCount ?? null,
           failedCount: execution?.failedCount ?? null,
           messages: execution?.messages ?? [],
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
     const execution = getCampaignHistory().find((record) => record.campaignId === campaign.id);
     return {
       ...campaign,
+      executionMode: execution?.executionMode ?? campaign.executionMode ?? "demo",
       successfulCount: execution?.successfulCount ?? null,
       failedCount: execution?.failedCount ?? null,
       messages: execution?.messages ?? [],

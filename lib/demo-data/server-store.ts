@@ -17,8 +17,9 @@ export interface PersonalizedCampaignMessage {
   customerSegment: string;
   discountPercent: number;
   message: string;
-  status: "draft" | "simulated" | "failed";
+  status: "draft" | "approved" | "demo_executed" | "simulated" | "failed";
   result: string | null;
+  providerMessageId?: string | null;
 }
 
 export interface VoiceCampaignDraft {
@@ -35,6 +36,7 @@ export interface CampaignExecutionRecord {
   campaignId: string;
   draftId: string;
   campaign: MarketingCampaign;
+  executionMode?: "demo" | "whatsapp";
   executedAt: string;
   successfulCount: number;
   failedCount: number;
@@ -124,26 +126,31 @@ export function recordCampaignExecution(
     );
     return {
       ...entry,
-      status: succeeded ? "simulated" as const : "failed" as const,
-      result: succeeded ? "Simulated successfully; no message was sent." : "Simulation failed validation.",
+      status: succeeded ? ("demo_executed" as const) : ("failed" as const),
+      result: succeeded
+        ? "Demo executed successfully; no message was sent."
+        : "Simulation failed validation.",
+      providerMessageId: null,
     };
   });
-  const successfulCount = messages.filter((entry) => entry.status === "simulated").length;
+  const successfulCount = messages.filter((entry) => entry.status === "demo_executed").length;
   const failedCount = messages.filter((entry) => entry.status === "failed").length;
   const campaign: MarketingCampaign = {
     ...draft.campaign,
-    status: "simulated",
+    status: "demo_executed",
+    executionMode: "demo",
     sentCount: 0,
   };
   const execution: CampaignExecutionRecord = {
     campaignId: campaign.id,
     draftId,
     campaign,
+    executionMode: "demo",
     executedAt,
     successfulCount,
     failedCount,
     messages,
-    status: "simulated",
+    status: "demo_executed",
   };
 
   state.data.campaigns = [...state.data.campaigns, campaign];
