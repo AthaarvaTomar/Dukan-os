@@ -1,156 +1,183 @@
-# DukaanOS
+# DukaanOS – AI-Powered Business Management Platform
 
-DukaanOS is a responsive workspace for small-business owners, with a shared dashboard, demo store data, and an AI assistant (Gemini) with text chat, voice interface, and Supabase-backed authentication.
+**Your Business. Your AI Partner.**
 
-The demo workspace uses fictional records for Sharma General Store. Its dashboard totals and chart are calculated from the same demo transactions and expenses that the data layer exposes.
+DukaanOS is an AI-powered business management platform designed to help small retailers and shopkeepers manage their daily business operations through a unified, intelligent workspace.
 
-## Getting started
+The platform combines business analytics, sales tracking, inventory management, customer relationship management, marketing campaigns, and an AI-powered conversational assistant into a single responsive dashboard.
 
-```bash
-npm install
-npm run dev
-```
+Powered by **Google Gemini AI**, DukaanOS enables merchants to interact with their business data using natural language and receive actionable insights about sales, revenue, expenses, profitability, customers, and inventory. It also supports voice-based interactions through the Sarvam Voice Agents SDK.
 
-Open [http://localhost:3000](http://localhost:3000) to view the app.
+The application is built using Next.js, React, TypeScript, Supabase, and modern frontend technologies.
 
-### Environment variables
+---
 
-Copy `.env.example` to `.env.local` and fill in the values:
+## 1. Key Features
 
-```bash
-cp .env.example .env.local
-```
+### AI Business Assistant – Google Gemini
+* Integrated Google Gemini AI as the primary conversational business assistant.
+* Supports natural-language queries about business performance and operations.
+* Provides contextual responses using calculated business analytics rather than invented business figures.
+* Supports questions related to daily sales, total revenue, estimated profit, expenses, inventory, and customer activity.
+* Uses intent classification to identify supported business queries.
+* Executes predefined business calculations before generating AI responses.
+* Supports responses in the user's preferred language.
+* Includes fallback handling for invalid classifier responses and AI provider failures.
 
-| Variable | Purpose |
-| --- | --- |
-| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/) key — server only |
-| `GEMINI_MODEL` | Model name, e.g. `gemini-2.5-flash` |
-| `AI_PROVIDER` | `gemini` (default) or `sarvam` (optional legacy) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (safe for browser) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (safe for browser) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key — server only, never expose |
-| `SARVAM_API_KEY` | Optional: Sarvam Voice Agents API key |
-| `SARVAM_TOOL_API_TOKEN` | Optional: webhook bearer token for Sarvam voice tools |
-| `WHATSAPP_ACCESS_TOKEN` | Future: Meta WhatsApp Cloud API token (server-only) |
-| `WHATSAPP_PHONE_NUMBER_ID` | Future: Meta WhatsApp Business Phone Number ID (server-only) |
-| `WHATSAPP_BUSINESS_ACCOUNT_ID` | Future: Meta WhatsApp Business Account ID (server-only) |
-| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Future: Webhook verification token (server-only) |
-| `WHATSAPP_APP_SECRET` | Future: Meta App Secret for HMAC webhook signature validation (server-only) |
+**Example queries:**
+* `"Aaj kitni sale hui?"`
+* `"What is my total revenue this month?"`
+* `"Which products should I reorder?"`
+* `"Who are my inactive customers?"`
+* `"Which products generate the highest profit?"`
+* `"How much did I spend this month?"`
 
-## Routes
+### Voice-Based AI Assistant
+* Integrated the official Sarvam Voice Agents Web SDK.
+* Supports browser-based voice interactions.
+* Uses the Sarvam ConversationAgent and BrowserAudioInterface.
+* Connects voice conversations to authenticated backend business API tools.
+* Allows merchants to retrieve sales, inventory, and customer insights through voice queries.
+* Keeps voice-agent credentials and tool authentication tokens on the server.
+* Supports campaign drafting through voice instructions with merchant approval.
 
-| Page | Route |
-| --- | --- |
-| Overview | `/` |
-| AI Assistant (chat and voice) | `/ai-assistant` |
-| Customers | `/customers` |
-| Marketing Campaigns | `/marketing` |
-| Inventory | `/inventory` |
-| Business Insights | `/insights` |
-| Settings | `/settings` |
+### Business Dashboard and Analytics
+* Unified dashboard displaying important business metrics.
+* Sales and revenue summaries.
+* Estimated profit and expense tracking.
+* Customer and product performance insights.
+* Interactive charts and visualizations using Recharts.
+* Dashboard calculations based on the shared demo-data layer.
+* Responsive workspace for desktop, tablet, and mobile screens.
 
-Settings remains a placeholder; the inventory, customer, campaign, and assistant modules are interactive.
+### Sales and Transaction Management
+* Maintains transaction records and product-level sales information.
+* Calculates transaction totals using recorded product prices.
+* Tracks revenue and estimated profit using historical transaction data.
+* Maintains product cost and selling price at the time of each transaction.
+* Provides transaction data for business analytics and AI responses.
 
-## Project structure
+### Inventory Management
+* Add, edit, search, filter, and delete products.
+* Record stock-in, stock-out, and adjustment movements.
+* Monitor available stock quantities.
+* Generate low-stock and out-of-stock alerts.
+* Calculate reorder suggestions using actual completed sales.
+* Generate supplier order drafts.
+* Edit supplier order quantities and supplier information.
+* Approve supplier drafts within the application.
+* Synchronize inventory information with the server-side demo store for voice-agent tools.
 
-```text
-app/
-  (dashboard)/      Dashboard routes and shared layout
-components/
-  dashboard/        Sidebar, shell, chart, and workspace modules
-  ui/               shadcn/ui-style primitives
-lib/
-  demo-data/        Typed demo entities, seeded records, analytics, validation, and storage
-  assistant/        Text assistant and business-tool calculations
-  navigation.ts     Shared route labels and icons
-  utils.ts          Shared class-name helper
-tests/
-  demo-data.test.ts Calculation, segmentation, inventory, and integrity tests
-```
+**Inventory intelligence:**
+* Low stock is determined using the configured minimum stock quantity.
+* Reorder recommendations use completed sales from the previous 30 days.
+* Recommendations target 14 days of stock coverage.
+* Suggested quantities also account for minimum-stock shortages.
+* Supplier order drafts use the product's purchase cost.
 
-## Stack
+> **Note:** Approval records the draft as approved inside DukaanOS. It does not automatically place an external supplier order.
 
-- Next.js App Router, React, and TypeScript
-- Tailwind CSS 4
-- shadcn/ui component conventions
-- Lucide React, Recharts, and Sonner
+### Customer Management and Segmentation
+* Maintain customer records and purchase histories.
+* Track customer spending and order counts.
+* Calculate customer segments using purchasing activity.
+* Identify high-value, new, inactive, and regular customers.
+* Display customer purchase information for business insights.
 
-## Demo data
+**Customer segmentation rules:**
 
-The seed includes 34 customers, 24 products, 418 transactions, 24 expenses, and 6 marketing campaigns. Purchase dates are generated within the last 90 days. Transaction items keep the product price and cost at the time of sale, so revenue and estimated profit remain based on transaction history.
+| Segment | Condition |
+|---|---|
+| **High Value** | Total spending of at least ₹50,000 |
+| **New** | First purchase within 30 days and no more than two orders |
+| **Inactive** | No purchase in the last 45 days or never purchased |
+| **Regular** | Other purchasing customers |
 
-Customer segments are derived from purchases: high-value customers have spent at least â‚¹50,000; new customers have a first purchase within 30 days and no more than two orders; inactive customers have no order in the past 45 days (or have never purchased); all other purchasers are regular customers. Inventory is low at or below its reorder level and out when its stock is zero.
+### AI-Powered Marketing Campaigns
+* Generate personalized marketing campaign drafts.
+* Identify eligible inactive customers.
+* Create individual 15% discount message drafts.
+* Personalize messages using actual customer names, segments, purchase history, and product categories where available.
+* Review, edit, regenerate, and preview campaign messages.
+* Require explicit merchant approval before recording campaign execution.
+* Maintain simulated campaign history.
+* Prevent duplicate campaign execution.
 
-The `useDemoStore` hook provides typed create/update/delete helpers for customer, product, transaction, expense, and campaign records. It saves updates to browser local storage and validates transaction references before saving. Local data can be reset with the hook's `reset` method.
+> **Important:** Campaign approvals record simulated results only. No WhatsApp or SMS messages are sent because a messaging provider is not connected.
 
-## Inventory
+### Authentication and Data Management
+* Supabase-backed authentication.
+* Environment-based configuration.
+* Typed demo-data entities and validation.
+* Shared data-access hooks for application modules.
+* Browser local-storage persistence for demo workspace updates.
+* Transaction reference validation before saving changes.
+* Server-side API credential management.
 
-The Inventory page uses the shared `DemoData.products` collection: add, edit, search, filter, and delete products; record stock-in, stock-out, and adjustment movements; review low-stock alerts and rule-based reorder suggestions; and save or approve supplier order drafts. Stock movements and supplier drafts are stored in the same versioned browser local-storage record as the rest of the demo data. Product and stock changes therefore remain available after a page reload and update dashboard metrics and text-assistant answers.
+---
 
-Low stock means current quantity is less than or equal to the configured minimum. Reorder recommendations use actual completed sales from the last 30 days and a 14-day coverage target, while never suggesting less than the minimum-stock shortage. A supplier draft uses the product purchase cost; merchants can edit quantities and must supply a supplier name before saving. Approval only marks the draft approved in DukaanOS. It does not send an order.
+## 2. Technology Stack
 
-When the Inventory page loads or inventory changes, it synchronizes products, stock history, and supplier drafts to the server-side demo store so Sarvam inventory tools use the current inventory. That server store is in memory and resets when its process restarts; browser inventory remains in local storage. This demo architecture does not provide multi-device synchronization or durable server-side history.
+| Category | Technology |
+|---|---|
+| **Frontend Framework** | Next.js (App Router) |
+| **UI Library** | React |
+| **Programming Language** | TypeScript |
+| **Styling** | Tailwind CSS 4 |
+| **UI Components** | shadcn/ui conventions |
+| **Icons** | Lucide React |
+| **Charts** | Recharts |
+| **Notifications** | Sonner |
+| **AI Assistant** | Google Gemini API |
+| **Voice Integration** | Sarvam Voice Agents SDK |
+| **Authentication** | Supabase Auth |
+| **Data Validation** | TypeScript and application-level validation |
+| **Browser Persistence** | Local Storage |
+| **Testing** | Project test suite using `npm test` |
+| **Package Manager** | npm |
 
-Run the data tests with:
+### AI and Voice Technologies
 
-```bash
-npm test
-```
+* **Google Gemini AI**
+  * Natural-language business assistant.
+  * Business query intent classification.
+  * Contextual response generation.
+  * Business insights based on calculated analytics.
 
-## AI assistant
+* **Sarvam AI**
+  * Voice-based conversational interface.
+  * Browser microphone and audio handling.
+  * Voice-agent deployment through the official Web SDK.
+  * Authenticated backend API tools for business operations.
 
-The `POST /api/assistant` endpoint accepts `{ "message": "...", "data": <current DemoData> }`. The browser sends its current dataset because the server cannot read browser local storage. The response includes `{ reply, intent, data }`, with analytics results available for future chart and table views.
+---
 
-The assistant is powered by **Gemini** (Sarvam legacy provider is optional). Set `GEMINI_API_KEY`, `GEMINI_MODEL` (e.g. `gemini-2.5-flash`), and optionally `AI_PROVIDER=gemini` (default) in `.env.local`.
+## 3. Project Architecture
 
-The API key is used only on the server. The integration classifies supported questions, runs the existing demo analytics, then asks the AI model to phrase a concise reply in the user's language using only calculated values. Invalid classifier JSON falls back to deterministic keyword matching; requests with missing credentials, provider failures, or timeouts return a friendly `error` response with HTTP 200.
+The application follows a modular Next.js App Router architecture organizing routes, shared components, server-side actions, and state management hooks to ensure scalability and separation of concerns.
 
-## Sarvam Voice Agent setup
+---
 
-The browser uses the official [`sarvam-conv-ai-sdk`](https://docs.sarvam.ai/voice-agents/deploy/sdks/web) web SDK (`ConversationAgent`, `BrowserAudioInterface`, and `InteractionType.CALL`). Its signed-URL request is proxied through `/api/sarvam/`; the Sarvam API key stays on the server and is never placed in browser code.
+## 4. Getting Started
 
-1. Copy `.env.example` to `.env.local` if it is not already present. The checked-in `.env.example` contains placeholders only; `.env.local` is ignored by Git.
-2. In your Sarvam Voice Agents dashboard, open **Settings â†’ API Key** and put that Voice Agents API key in `SARVAM_API_KEY`.
-3. Open the agent you intend to use and choose **Deploy with Code â†’ Web SDK**. Copy the `org_id`, `workspace_id`, and `app_id` values shown in the SDK configuration into `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, and `SARVAM_APP_ID`, respectively. `app_id` is the ID of the voice agent, not a Chat Completions model ID.
-4. Generate a long random token for `SARVAM_TOOL_API_TOKEN`, then configure the same value as a **Bearer token secret** in the Sarvam workspace. For example, generate a token locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Never put this token in browser code or a committed file.
-5. In the Sarvam agent builder, use the system instructions below, add the HTTPS API tools listed in the next section, and **commit an agent version**. The SDK cannot connect to an agent with no committed version.
-6. Restart `npm run dev`, allow microphone access when prompted, then click **Start voice**. Starting the assistant page does not open the microphone.
+### Prerequisites
 
-The voice agent's system instructions:
+Make sure you have installed:
+* Node.js (compatible with your project's Next.js version)
+* npm
+* Git
+* A Supabase project
+* A Google AI Studio API key
+* Sarvam Voice Agents credentials (if testing voice functionality)
 
-> You are DukaanOS, an AI business assistant for Indian shopkeepers. Speak naturally in Hindi, English, or Hinglish. Answer using actual DukaanOS business data. Help merchants understand sales, customers, inventory, and profits. Keep answers short and practical. Never invent business figures. Ask for confirmation before making changes or executing campaigns.
+### Installation
 
-Add these campaign-specific rules after that prompt: for â€œCreate personalized 15% discount messages for inactive customersâ€ (or an equivalent request), call `campaign-draft`; report the returned eligible customer count, explain that each draft uses verified purchase/category/segment details where present, and ask the merchant to review the campaign in DukaanOS. Do not execute anything until the merchant explicitly approves using the review button. Approval records each message as simulated only. Never say a WhatsApp/SMS message was sent or delivered.
+1. Clone the repository:
+2. npm install
+3. npm run dev
 
-### Sarvam HTTPS API tools
+DukaanOS aims to make business intelligence accessible to small retailers by combining everyday business management tools with conversational AI.
 
-Create these as Sarvam **API tools** (not lifecycle webhooks), use the matching HTTP method and path, and configure **Auth â†’ Bearer token** with the secure workspace secret matching `SARVAM_TOOL_API_TOKEN`. Responses are small JSON objects calculated from the server-side demo data:
+Instead of navigating multiple dashboards and manually calculating business figures, merchants can use a unified workspace or simply ask the AI assistant questions about their business.
 
-| Tool name | Method and path | Description |
-| --- | --- | --- |
-| `sales_today` | `GET /api/voice/tools/sales-today` | Today's actual revenue and transaction count |
-| `revenue_and_profit` | `GET /api/voice/tools/revenue-profit` | Calculated total revenue, estimated profit, and expenses |
-| `top_products` | `GET /api/voice/tools/top-products?limit=5` | Top-selling products by quantity and revenue |
-| `low_stock_and_reorders` | `GET /api/voice/tools/inventory-low` | Low/out-of-stock items and suggested reorder quantities |
-| `inactive_customers` | `GET /api/voice/tools/inactive-customers` | Eligible customers, verified purchase details, and segment |
-| `customer_purchase_history` | `GET /api/voice/tools/customer-history?name={{customerName}}` | A customer's recent purchases and actual spend |
-| `business_insights` | `GET /api/voice/tools/business-insights` | Calculated revenue, profit, inventory, customers, and top products |
-| `campaign_history` | `GET /api/voice/tools/campaign-history` | Existing campaign records and simulated campaign status |
-| `draft_inactive_customer_campaign` | `POST /api/voice/tools/campaign-draft` | Create personalized 15% messages for eligible customers and request merchant review |
-
-Use the secure bearer credential for every tool. The customer-history tool accepts an exact customer name or `customer_id`. The campaign-draft tool returns a unique message draft per eligible customer, generated from their actual name, segment, last purchase date, and latest product/category when available, plus the eligible count and an approval-required flag. The Marketing Campaigns page supports reviewing, editing, regenerating, and previewing all messages. Only the merchant's explicit **Approve & simulate** action records per-customer simulation results and campaign history; duplicate execution is rejected. No messaging provider is connected and no messages are sent.
-
-### Local testing and deployment limits
-
-The browser voice session can be tested locally at `http://localhost:3000` (localhost is permitted for microphone access). Sarvam's hosted API tools **cannot** call a localhost URL. To test those tools through Sarvam, deploy DukaanOS to a publicly reachable HTTPS host, set the environment variables there, and use that public base URL in each Sarvam tool. Do not configure cloud tools to call localhost.
-
-For a local API smoke test, set the token in the PowerShell session and call one authenticated endpoint:
-
-```powershell
-$env:SARVAM_TOOL_API_TOKEN = "the-same-local-test-token-as-.env.local"
-curl.exe -H "Authorization: Bearer $env:SARVAM_TOOL_API_TOKEN" http://localhost:3000/api/voice/tools/sales-today
-```
-
-Server-side demo data and simulated campaigns are held in memory for the lifetime of a server process. This provides a consistent dataset to the API tools without trusting browser localStorage, but it is not durable or shared across serverless instances/restarts. Browser-only edits are not synchronized. Use a shared persistent data store before relying on edits or campaign history across restarts or production instances.
-
-The integration is **not confirmed end-to-end** until valid Sarvam credentials are configured, an agent is committed, and a real voice session plus authenticated HTTPS tool calls have been tested.
+DukaanOS – Your Business. Your AI Partner.
