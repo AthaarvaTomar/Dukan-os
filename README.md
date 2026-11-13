@@ -75,7 +75,7 @@ The application is built using Next.js, React, TypeScript, Supabase, and modern 
 * Suggested quantities also account for minimum-stock shortages.
 * Supplier order drafts use the product's purchase cost.
 
-> **Note:** Approval records the draft as approved inside DukaanOS. It does not automatically place an external supplier order.
+
 
 ### Customer Management and Segmentation
 * Maintain customer records and purchase histories.
