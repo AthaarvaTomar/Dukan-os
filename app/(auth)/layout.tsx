@@ -14,7 +14,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         </span>
       </Link>
       <main className="w-full max-w-md">{children}</main>
-      <p className="mt-8 text-xs text-slate-400">Your shop&apos;s home base, all in one place.</p>
     </div>
   );
 }

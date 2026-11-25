@@ -59,7 +59,7 @@ export default function OnboardingPage() {
         Set up your shop
       </h1>
       <p className="mt-1 text-sm text-slate-500">
-        One last step — tell us your shop&apos;s name. You can start clean and add products whenever you&apos;re ready.
+        Enter your shop name to create your workspace.
       </p>
       {checking ? (
         <p className="mt-6 flex items-center gap-2 text-sm text-slate-500" role="status">

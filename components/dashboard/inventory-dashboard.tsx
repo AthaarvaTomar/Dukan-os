@@ -379,9 +379,8 @@ export function InventoryDashboard() {
     <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-9">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-lime-700">DukaanOS workspace</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Inventory</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Manage product details, stock movements, and supplier restocking from your current store data.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Inventory</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Track products, stock movements, and supplier reorder drafts.</p>
         </div>
         <button type="button" onClick={beginNewProduct} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">
           <Plus size={16} aria-hidden="true" /> Add product
@@ -491,7 +490,7 @@ export function InventoryDashboard() {
                     <td className="px-4 py-4"><p className="text-slate-900">{currency.format(product.price)}</p><p className="text-xs text-slate-500">Cost {currency.format(product.costPrice)}</p></td>
                     <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span><p className="mt-1 text-xs text-slate-600">{product.stock} {product.unit} · min {product.reorderLevel}</p></td>
                     <td className="px-4 py-4 text-slate-600">{product.supplierName?.trim() || "Not set"}</td>
-                    <td className="px-4 py-4 text-xs text-slate-500">{product.lastUpdatedAt ? formatDate(product.lastUpdatedAt) : "—"}</td>
+                    <td className="px-4 py-4 text-xs text-slate-500">{product.lastUpdatedAt ? formatDate(product.lastUpdatedAt) : "Not updated"}</td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-1.5">
                         <button type="button" onClick={() => beginStockOperation(product, "stock-in")} aria-label={`Stock In ${product.name}`} className="rounded-md border border-slate-200 p-2 text-emerald-700 hover:bg-emerald-50"><ArrowDownToLine size={15} /></button>
@@ -571,7 +570,7 @@ export function InventoryDashboard() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5"><h2 className="font-semibold text-slate-900">Stock movement history</h2><p className="mt-1 text-xs text-slate-500">Latest stock-in, stock-out, and adjustment records.</p></div>
-        {movements.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-500">Stock operations will appear here after you record a movement.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Product</th><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Change</th><th className="px-4 py-3">Previous → new</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-slate-100">{movements.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((movement) => <tr key={movement.id}><td className="px-4 py-3 text-xs text-slate-500">{formatDate(movement.createdAt)}</td><td className="px-4 py-3 font-medium text-slate-900">{movement.productName}</td><td className="px-4 py-3 capitalize text-slate-600">{movement.operation.replace("-", " ")}</td><td className="px-4 py-3 text-slate-700">{movement.quantityChanged > 0 ? "+" : ""}{movement.quantityChanged}</td><td className="px-4 py-3 text-slate-600">{movement.previousStock} → {movement.newStock}</td><td className="px-4 py-3 text-slate-600">{movement.reason}</td></tr>)}</tbody></table></div>}
+        {movements.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-500">Stock operations will appear here after you record a movement.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Product</th><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Change</th><th className="px-4 py-3">Previous to new</th><th className="px-4 py-3">Reason</th></tr></thead><tbody className="divide-y divide-slate-100">{movements.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((movement) => <tr key={movement.id}><td className="px-4 py-3 text-xs text-slate-500">{formatDate(movement.createdAt)}</td><td className="px-4 py-3 font-medium text-slate-900">{movement.productName}</td><td className="px-4 py-3 capitalize text-slate-600">{movement.operation.replace("-", " ")}</td><td className="px-4 py-3 text-slate-700">{movement.quantityChanged > 0 ? "+" : ""}{movement.quantityChanged}</td><td className="px-4 py-3 text-slate-600">{movement.previousStock} to {movement.newStock}</td><td className="px-4 py-3 text-slate-600">{movement.reason}</td></tr>)}</tbody></table></div>}
       </section>
     </div>
   );

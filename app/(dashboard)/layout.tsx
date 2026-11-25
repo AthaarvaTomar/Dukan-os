@@ -47,7 +47,7 @@ async function AuthenticatedDashboard({ children }: { children: ReactNode }) {
             {message}
           </p>
           <p className="mt-3 text-xs leading-5 text-slate-500">
-            Verify that your Supabase SQL migrations (`0001`–`0005`) have been run and your Supabase URL/anon key belong to the right project.
+            Verify that Supabase SQL migrations 0001 through 0005 have been run and that your Supabase URL and anon key belong to the right project.
           </p>
           <div className="mt-5 flex items-center gap-3 text-xs">
             <Link

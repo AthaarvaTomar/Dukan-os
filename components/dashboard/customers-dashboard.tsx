@@ -116,12 +116,12 @@ export function CustomersDashboard() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-7">
       <section>
-        <p className="mb-2 text-sm font-medium text-slate-500">Customer intelligence</p>
+        <p className="mb-2 text-sm font-medium text-slate-500">Directory</p>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[30px]">
-          Your customers
+          Customers
         </h1>
         <p className="mt-1.5 text-sm text-slate-500">
-          Get to know the people who keep {businessName} going.
+          Purchase history and segments for {businessName}.
         </p>
       </section>
 
@@ -274,8 +274,7 @@ export function CustomersDashboard() {
         )}
       </section>
       <p className="text-xs leading-5 text-slate-400">
-        Segments are based on demo purchase history: inactive means no purchase in 45+ days;
-        high-value means lifetime spend of at least ₹50,000.
+        Inactive customers have no purchase in 45 days or more. High-value customers have spent at least ₹50,000.
       </p>
     </div>
   );

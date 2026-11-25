@@ -16,10 +16,12 @@ export type ExpenseCategory =
   | "Transport"
   | "Marketing"
   | "Maintenance";
+export type MarketingConsent = "granted" | "unknown" | "revoked";
 export type CampaignStatus =
   | "draft"
   | "approved"
   | "demo_executed"
+  | "cancelled"
   | "scheduled"
   | "active"
   | "completed"
@@ -33,6 +35,8 @@ export interface Customer {
   address: string;
   joinedAt: string;
   notes: string;
+  marketingConsent?: MarketingConsent;
+  optedOutAt?: string | null;
 }
 
 export interface Product {
@@ -117,6 +121,13 @@ export interface MarketingCampaign {
   channel: "WhatsApp" | "Instagram" | "In-store" | "SMS";
   status: CampaignStatus;
   executionMode?: "demo" | "whatsapp";
+  version?: number;
+  approvedVersion?: number | null;
+  offerText?: string;
+  targetSegment?: "all" | CustomerSegment;
+  templateText?: string;
+  cooldownDays?: number;
+  messageCap?: number;
   startDate: string;
   endDate: string;
   budget: number;

@@ -270,7 +270,7 @@ export function BillingDashboard() {
           Billing
         </h1>
         <p className="mt-1.5 text-sm text-slate-500">
-          Create a quick bill for {businessName}, update stock, and share a receipt.
+          Record a sale for {businessName}. Stock updates when you save.
         </p>
       </section>
 
@@ -377,7 +377,7 @@ export function BillingDashboard() {
                 ) : (
                   sortedProducts.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.name} — {formatBillingCurrency(product.price)} ({product.stock} {product.unit} left)
+                      {product.name}, {formatBillingCurrency(product.price)}, {product.stock} {product.unit} left
                     </option>
                   ))
                 )}
@@ -668,7 +668,7 @@ export function BillingDashboard() {
           <div className="px-6 py-14 text-center">
             <p className="text-sm font-medium text-slate-700">No bills recorded yet</p>
             <p className="mt-1 text-xs text-slate-500">
-              Your saved sales will appear here automatically.
+              Saved bills appear here.
             </p>
           </div>
         ) : (

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingCampaigns } from "@/components/dashboard/marketing-campaigns";
 
-export const metadata: Metadata = { title: "Marketing Campaigns" };
+export const metadata: Metadata = { title: "Marketing campaigns" };
 
 export default function MarketingPage() {
   return <MarketingCampaigns />;

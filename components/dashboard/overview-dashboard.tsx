@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import {
   ArrowDownRight,
-  ArrowRight,
   ArrowUpRight,
   BadgeIndianRupee,
   Package,
@@ -281,7 +280,7 @@ export function OverviewDashboard() {
             {businessName}
           </h1>
           <p className="mt-1.5 text-sm text-slate-500">
-            Your business at a glance, powered by your store data.
+            Sales, profit, customer, and stock totals for {periodOptions[period].label.toLowerCase()}.
           </p>
         </div>
         <p className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm">
@@ -312,7 +311,9 @@ export function OverviewDashboard() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
                   <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
                 </span>
-                <span className="text-xs font-medium text-slate-400">View trend ↗</span>
+                <span className="text-xs font-medium text-slate-400">
+                  {selected ? "On chart" : "Show on chart"}
+                </span>
               </div>
               <p className="mt-4 text-sm text-slate-500">{card.label}</p>
               <p className="mt-1 text-[26px] font-semibold tracking-tight text-slate-900">{details.value}</p>
@@ -520,13 +521,13 @@ export function OverviewDashboard() {
       <section>
         <div className="mb-4">
           <h2 className="font-semibold text-slate-900">Business insights</h2>
-          <p className="mt-1 text-sm text-slate-500">Quick signals from your sales, customers, and inventory.</p>
+          <p className="mt-1 text-sm text-slate-500">Period summaries from recorded transactions and stock levels.</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           <article className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
               <BadgeIndianRupee size={17} aria-hidden="true" />
-              Sales pulse
+              Sales
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-700">{salesInsight}</p>
             <p className="mt-2 text-xs text-slate-500">
@@ -536,7 +537,7 @@ export function OverviewDashboard() {
           <article className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-violet-800">
               <UsersRound size={17} aria-hidden="true" />
-              Customer momentum
+              Customers
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-700">
               {model.currentNewCustomers > 0
@@ -550,30 +551,17 @@ export function OverviewDashboard() {
           <article className="rounded-2xl border border-amber-100 bg-amber-50/60 p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-amber-800">
               <Package size={17} aria-hidden="true" />
-              Stock to watch
+              Low stock
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-700">
               {model.stock.low + model.stock.out > 0
                 ? `${numberFormatter.format(model.stock.low + model.stock.out)} products need a stock check.`
-                : "No products are currently below their reorder levels."}
+                : "No products are below their reorder levels."}
             </p>
             <p className="mt-2 text-xs text-slate-500">
               {numberFormatter.format(model.stock.low)} low · {numberFormatter.format(model.stock.out)} out · {numberFormatter.format(model.stock.normal)} healthy
             </p>
           </article>
-        </div>
-      </section>
-
-      <section className="rounded-2xl bg-slate-900 p-5 text-white sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-6">
-        <div>
-          <p className="text-sm font-semibold">Your store data, one clear picture.</p>
-          <p className="mt-1 text-sm text-slate-400">
-            Every dashboard figure is calculated from the current demo transactions and inventory.
-          </p>
-        </div>
-        <div className="mt-4 flex items-center gap-2 text-sm font-medium text-lime-300 sm:mt-0">
-          {numberFormatter.format(data.transactions.length)} total transactions
-          <ArrowRight size={16} aria-hidden="true" />
         </div>
       </section>
     </div>

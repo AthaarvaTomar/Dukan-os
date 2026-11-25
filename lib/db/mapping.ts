@@ -1,11 +1,13 @@
 import type {
   CampaignStatus,
   Customer,
+  CustomerSegment,
   DemoData,
   Expense,
   ExpenseCategory,
   InventoryMovement,
   MarketingCampaign,
+  MarketingConsent,
   PaymentMethod,
   Product,
   ProductCategory,
@@ -26,6 +28,8 @@ export interface CustomerRow {
   address: string;
   notes: string;
   joined_at: string;
+  marketing_consent?: string;
+  opted_out_at?: string | null;
 }
 
 export interface ProductRow {
@@ -98,6 +102,13 @@ export interface CampaignRow {
   channel: string;
   status: string;
   execution_mode?: string;
+  version?: number;
+  approved_version?: number | null;
+  offer_text?: string;
+  target_segment?: string;
+  template_text?: string;
+  cooldown_days?: number;
+  message_cap?: number;
   start_date: string;
   end_date: string;
   budget: number;
@@ -187,6 +198,7 @@ function asCampaignStatus(value: string): CampaignStatus {
     "draft",
     "approved",
     "demo_executed",
+    "cancelled",
     "scheduled",
     "active",
     "completed",
@@ -194,6 +206,22 @@ function asCampaignStatus(value: string): CampaignStatus {
   ].includes(value)
     ? (value as CampaignStatus)
     : "draft";
+}
+
+function asMarketingConsent(value: string): MarketingConsent {
+  return value === "granted" || value === "revoked" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function asTargetSegment(value: string): "all" | CustomerSegment {
+  return value === "all" ||
+    value === "inactive" ||
+    value === "regular" ||
+    value === "new" ||
+    value === "high-value"
+    ? value
+    : "inactive";
 }
 
 function asStockOperation(value: string): StockOperation {
@@ -211,6 +239,10 @@ export function mapCustomer(row: CustomerRow): Customer {
     address: row.address ?? "",
     joinedAt: row.joined_at,
     notes: row.notes ?? "",
+    ...(row.marketing_consent !== undefined
+      ? { marketingConsent: asMarketingConsent(row.marketing_consent) }
+      : {}),
+    ...(row.opted_out_at !== undefined ? { optedOutAt: row.opted_out_at } : {}),
   };
 }
 
@@ -263,6 +295,15 @@ export function mapCampaign(row: CampaignRow): MarketingCampaign {
     channel: asChannel(row.channel),
     status: asCampaignStatus(row.status),
     executionMode: row.execution_mode === "whatsapp" ? "whatsapp" : "demo",
+    ...(row.version !== undefined ? { version: row.version } : {}),
+    ...(row.approved_version !== undefined ? { approvedVersion: row.approved_version } : {}),
+    ...(row.offer_text !== undefined ? { offerText: row.offer_text } : {}),
+    ...(row.target_segment !== undefined
+      ? { targetSegment: asTargetSegment(row.target_segment) }
+      : {}),
+    ...(row.template_text !== undefined ? { templateText: row.template_text } : {}),
+    ...(row.cooldown_days !== undefined ? { cooldownDays: row.cooldown_days } : {}),
+    ...(row.message_cap !== undefined ? { messageCap: row.message_cap } : {}),
     startDate: row.start_date,
     endDate: row.end_date,
     budget: Number(row.budget),
@@ -356,6 +397,10 @@ export function customerToRow(businessId: string, customer: Customer): CustomerR
     address: customer.address,
     notes: customer.notes,
     joined_at: customer.joinedAt,
+    ...(customer.marketingConsent !== undefined
+      ? { marketing_consent: customer.marketingConsent }
+      : {}),
+    ...(customer.optedOutAt !== undefined ? { opted_out_at: customer.optedOutAt } : {}),
   };
 }
 

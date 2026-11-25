@@ -142,12 +142,6 @@ function Sidebar({
         ))}
       </nav>
 
-      <div className="mb-4 rounded-xl border border-lime-300/10 bg-lime-300/[0.06] px-3.5 py-3">
-        <p className="text-xs font-medium text-lime-200">Made for your next big thing</p>
-        <p className="mt-1 text-[11px] leading-5 text-slate-400">
-          Your shop&apos;s home base, all in one place.
-        </p>
-      </div>
       <MerchantProfile
         userName={userName}
         businessName={businessName}
@@ -242,20 +236,14 @@ export function DashboardShell({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-            <span className="hidden items-center gap-2 text-xs text-slate-500 md:inline-flex">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
-              Store is live
-            </span>
-            <span className="hidden h-7 w-px bg-slate-200 md:block" aria-hidden="true" />
             <Button
               variant="ghost"
               size="icon"
               aria-label="Notifications"
               className="relative"
-              onClick={() => toast("You're all caught up", { description: "New store activity will show up here." })}
+              onClick={() => toast("No new notifications")}
             >
               <Bell size={18} strokeWidth={1.8} />
-              <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-orange-500 ring-2 ring-white" aria-hidden="true" />
             </Button>
             <div className="hidden h-8 w-px bg-slate-200 sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2.5">

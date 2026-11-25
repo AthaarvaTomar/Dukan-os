@@ -54,7 +54,7 @@ export default function SignupPage() {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
       <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
-      <p className="mt-1 text-sm text-slate-500">Set up your shop in under a minute.</p>
+      <p className="mt-1 text-sm text-slate-500">Enter your details to register your shop.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <label className="block text-xs font-medium text-slate-600">
           Your name

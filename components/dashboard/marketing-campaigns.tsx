@@ -4,28 +4,47 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Info,
   LoaderCircle,
-  Lock,
   Megaphone,
   Pencil,
+  Play,
   RefreshCw,
-  Send,
+  ShieldCheck,
   Users,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  HOLD_BACK_REASON_LABELS,
+  type HoldBackReason,
+  type WinbackSegment,
+} from "@/lib/campaigns/winback";
 
 interface CampaignMessage {
   customerId: string;
   customerName: string;
+  customerPhone?: string;
   previousPurchase: string | null;
   productCategory: string | null;
   lastPurchaseAt: string | null;
   customerSegment: string;
   discountPercent: number;
   message: string;
-  status: "draft" | "approved" | "demo_executed" | "simulated" | "failed";
+  status: "queued" | "draft" | "approved" | "demo_executed" | "skipped" | "simulated" | "failed";
+  skipReason?: string | null;
   result: string | null;
+}
+
+interface HeldBackItem {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  customerSegment: string;
+  marketingConsent: string;
+  optedOutAt: string | null;
+  reason: HoldBackReason;
+  reasonLabel: string;
+  detail: string;
 }
 
 interface CampaignDraft {
@@ -40,7 +59,19 @@ interface CampaignDraft {
   };
   message: string;
   eligibleCustomerCount: number;
+  eligibleCount?: number;
+  heldBackCount?: number;
+  heldBack?: HeldBackItem[];
+  reasonCounts?: Record<HoldBackReason, number>;
   discountPercent: number;
+  version?: number;
+  approvedVersion?: number | null;
+  status?: "draft" | "approved" | "demo_executed" | "cancelled";
+  targetSegment?: WinbackSegment;
+  offerText?: string;
+  templateText?: string;
+  cooldownDays?: number;
+  messageCap?: number;
   messages: CampaignMessage[];
 }
 
@@ -50,11 +81,24 @@ interface CampaignHistory {
   channel: string;
   status: string;
   executionMode?: "demo" | "whatsapp";
+  version?: number;
+  approvedVersion?: number | null;
+  offerText?: string;
+  targetSegment?: WinbackSegment;
   audienceSize: number;
   successfulCount: number | null;
   failedCount: number | null;
+  skippedCount?: number;
   messages: CampaignMessage[];
 }
+
+const SEGMENT_OPTIONS: Array<{ value: WinbackSegment; label: string }> = [
+  { value: "inactive", label: "Inactive customers" },
+  { value: "all", label: "All customers" },
+  { value: "regular", label: "Regular customers" },
+  { value: "new", label: "New customers" },
+  { value: "high-value", label: "High-value customers" },
+];
 
 function formatDate(value: string | null): string {
   if (!value) return "No previous purchase";
@@ -73,43 +117,43 @@ function campaignErrorMessage(error: unknown): string {
 export function MarketingCampaigns() {
   const [campaign, setCampaign] = useState<CampaignDraft | null>(null);
   const [history, setHistory] = useState<CampaignHistory[]>([]);
-  const [executionMode, setExecutionMode] = useState<"demo" | "whatsapp">("demo");
-  const [isWhatsAppConfigured, setIsWhatsAppConfigured] = useState(false);
-  const [settingsNotice, setSettingsNotice] = useState<string>(
-    "Real WhatsApp integration is not configured yet. Campaigns will run in demo mode.",
-  );
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [isExecuting, setIsExecuting] = useState(false);
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
+  // Campaign form inputs
+  const [campaignName, setCampaignName] = useState("");
+  const [targetSegment, setTargetSegment] = useState<WinbackSegment>("inactive");
+  const [offerText, setOfferText] = useState("15% off your next order");
+  const [cooldownDays, setCooldownDays] = useState("14");
+  const [messageCap, setMessageCap] = useState("50");
+  const [templateText, setTemplateText] = useState("");
+  const [showEditSettings, setShowEditSettings] = useState(false);
+
+  // Message editing and panels
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [editedMessage, setEditedMessage] = useState("");
+  const [showHeldBackList, setShowHeldBackList] = useState(false);
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadSettings = useCallback(async () => {
-    try {
-      const response = await fetch("/api/voice/campaigns/settings", { cache: "no-store" });
-      if (response.ok) {
-        const data = (await response.json()) as {
-          mode: "demo" | "whatsapp";
-          isWhatsAppConfigured: boolean;
-          message: string;
-        };
-        setExecutionMode(data.mode ?? "demo");
-        setIsWhatsAppConfigured(Boolean(data.isWhatsAppConfigured));
-        if (data.message) {
-          setSettingsNotice(data.message);
-        }
-      }
-    } catch {
-      // Retain default safe settings
-    }
+  const syncFormFromDraft = useCallback((draft: CampaignDraft | null) => {
+    if (!draft) return;
+    setCampaignName(draft.campaign.name ?? "");
+    setTargetSegment(draft.targetSegment ?? "inactive");
+    setOfferText(draft.offerText ?? `${draft.discountPercent}% off your next order`);
+    setCooldownDays(String(draft.cooldownDays ?? 14));
+    setMessageCap(String(draft.messageCap ?? 50));
+    setTemplateText(draft.templateText ?? "");
   }, []);
 
   const refresh = useCallback(async () => {
     try {
-      await loadSettings();
       const response = await fetch("/api/voice/campaigns", { cache: "no-store" });
       if (!response.ok) throw new Error("Campaign data could not be loaded.");
       const result: {
@@ -118,45 +162,94 @@ export function MarketingCampaigns() {
       } = await response.json();
       setCampaign(result.pending);
       setHistory(result.campaigns);
+      if (result.pending) syncFormFromDraft(result.pending);
       setError(null);
     } catch (requestError) {
       setError(campaignErrorMessage(requestError));
     } finally {
       setIsLoading(false);
     }
-  }, [loadSettings]);
-
-  const handleSelectMode = (mode: "demo" | "whatsapp") => {
-    if (mode === "whatsapp" && !isWhatsAppConfigured) {
-      setError("Real WhatsApp integration is not configured yet. Campaigns will run in demo mode.");
-      return;
-    }
-    setExecutionMode(mode);
-  };
+  }, [syncFormFromDraft]);
 
   useEffect(() => {
     void Promise.resolve().then(refresh);
   }, [refresh]);
 
-  const createCampaign = async () => {
+  const createCampaign = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isCreating || campaign) return;
     setIsCreating(true);
     setError(null);
     setNotice(null);
+
+    const parsedCooldown = Math.max(0, Math.floor(Number(cooldownDays) || 0));
+    const parsedCap = Math.max(1, Math.floor(Number(messageCap) || 50));
+
     try {
       const response = await fetch("/api/voice/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ discountPercent: 15 }),
+        body: JSON.stringify({
+          name: campaignName.trim() || undefined,
+          targetSegment,
+          offerText: offerText.trim() || "15% off your next order",
+          cooldownDays: parsedCooldown,
+          messageCap: parsedCap,
+          templateText: templateText.trim() || undefined,
+        }),
       });
       const result: { pending?: CampaignDraft; error?: string } = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Campaign draft could not be created.");
       if (!result.pending) throw new Error("The campaign draft response was incomplete.");
       setCampaign(result.pending);
-      setNotice(`${result.pending.eligibleCustomerCount} personalized messages are ready for review.`);
+      syncFormFromDraft(result.pending);
+      setNotice(
+        `Simulated / Demo draft v${result.pending.version ?? 1} created: ${result.pending.eligibleCount ?? result.pending.messages.length} eligible, ${result.pending.heldBackCount ?? 0} held back.`,
+      );
     } catch (requestError) {
       setError(campaignErrorMessage(requestError));
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const updateSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!campaign || isUpdatingSettings) return;
+    setIsUpdatingSettings(true);
+    setError(null);
+    setNotice(null);
+
+    const parsedCooldown = Math.max(0, Math.floor(Number(cooldownDays) || 0));
+    const parsedCap = Math.max(1, Math.floor(Number(messageCap) || 50));
+
+    try {
+      const response = await fetch(`/api/voice/campaigns/${campaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: campaignName.trim() || campaign.campaign.name,
+          targetSegment,
+          offerText: offerText.trim() || campaign.offerText,
+          cooldownDays: parsedCooldown,
+          messageCap: parsedCap,
+          templateText: templateText.trim(),
+        }),
+      });
+      const result: { pending?: CampaignDraft; error?: string } = await response.json();
+      if (!response.ok || !result.pending) {
+        throw new Error(result.error ?? "Campaign settings could not be updated.");
+      }
+      setCampaign(result.pending);
+      syncFormFromDraft(result.pending);
+      setShowEditSettings(false);
+      setNotice(
+        `Draft updated to v${result.pending.version ?? 1}. Approval was cleared; review and approve again before running Simulated / Demo execution.`,
+      );
+    } catch (requestError) {
+      setError(campaignErrorMessage(requestError));
+    } finally {
+      setIsUpdatingSettings(false);
     }
   };
 
@@ -167,113 +260,208 @@ export function MarketingCampaigns() {
 
   const saveMessage = async (customerId: string) => {
     if (!campaign) return;
+    setError(null);
     try {
       const response = await fetch(`/api/voice/campaigns/${campaign.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId, message: editedMessage }),
       });
-      const result: { message?: string; error?: string } = await response.json();
+      const result: {
+        message?: string;
+        version?: number;
+        approvedVersion?: number | null;
+        status?: CampaignDraft["status"];
+        pending?: CampaignDraft;
+        error?: string;
+      } = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Message could not be updated.");
-      setCampaign((current) =>
-        current
-          ? {
-              ...current,
-              messages: current.messages.map((entry) =>
-                entry.customerId === customerId
-                  ? { ...entry, message: result.message ?? editedMessage }
-                  : entry,
-              ),
-            }
-          : current,
-      );
+      if (result.pending) {
+        setCampaign(result.pending);
+      } else {
+        setCampaign((current) =>
+          current
+            ? {
+                ...current,
+                version: result.version ?? (current.version ?? 1) + 1,
+                approvedVersion: null,
+                status: "draft",
+                messages: current.messages.map((entry) =>
+                  entry.customerId === customerId
+                    ? { ...entry, message: result.message ?? editedMessage }
+                    : entry,
+                ),
+              }
+            : current,
+        );
+      }
       setEditingCustomerId(null);
-      setNotice("Personalized message updated.");
+      setNotice(
+        `Message saved (now v${result.version ?? (campaign.version ?? 1) + 1}). Prior approval cleared; approve this version before running Simulated / Demo execution.`,
+      );
     } catch (requestError) {
       setError(campaignErrorMessage(requestError));
     }
   };
 
   const regenerateMessage = async (customerId: string) => {
-    if (!campaign) return;
+    if (!campaign || regeneratingId) return;
+    setRegeneratingId(customerId);
     setError(null);
     try {
       const response = await fetch(
         `/api/voice/campaigns/${campaign.id}/messages/${customerId}/regenerate`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ useAiRewrite: false }),
+        },
       );
-      const regenerated: CampaignMessage & { error?: string } = await response.json();
+      const regenerated: CampaignMessage & {
+        version?: number;
+        approvedVersion?: number | null;
+        campaignStatus?: CampaignDraft["status"];
+        error?: string;
+      } = await response.json();
       if (!response.ok) throw new Error(regenerated.error ?? "Message could not be regenerated.");
       setCampaign((current) =>
         current
           ? {
               ...current,
+              version: regenerated.version ?? (current.version ?? 1) + 1,
+              approvedVersion: null,
+              status: "draft",
               messages: current.messages.map((entry) =>
-                entry.customerId === customerId ? regenerated : entry,
+                entry.customerId === customerId ? { ...entry, message: regenerated.message } : entry,
               ),
             }
           : current,
       );
-      setNotice(`Message for ${regenerated.customerName} was regenerated from purchase history.`);
+      setNotice(
+        `Message for ${regenerated.customerName} regenerated (v${regenerated.version ?? (campaign.version ?? 1) + 1}). Approval cleared.`,
+      );
     } catch (requestError) {
       setError(campaignErrorMessage(requestError));
+    } finally {
+      setRegeneratingId(null);
     }
   };
 
-  const executeCampaign = async () => {
-    if (!campaign || isExecuting) return;
-    setIsExecuting(true);
+  const handleApproveVersion = async () => {
+    if (!campaign || isApproving) return;
+    setIsApproving(true);
     setError(null);
+    setNotice(null);
     try {
-      const response = await fetch(
-        `/api/voice/campaigns/${campaign.id}/approve`,
-        { method: "POST" },
+      const response = await fetch(`/api/voice/campaigns/${campaign.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      });
+      const result: { pending?: CampaignDraft; message?: string; error?: string } =
+        await response.json();
+      if (!response.ok || !result.pending) {
+        throw new Error(result.error ?? "Approval failed.");
+      }
+      setCampaign(result.pending);
+      setNotice(
+        result.message ??
+          `Version v${result.pending.version ?? 1} approved for Simulated / Demo execution.`,
       );
+    } catch (requestError) {
+      setError(campaignErrorMessage(requestError));
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleSimulateSend = async () => {
+    if (!campaign || isSimulating) return;
+    setIsSimulating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/voice/campaigns/${campaign.id}/simulate`, {
+        method: "POST",
+      });
       const result: {
-        successfulCount?: number;
-        failedCount?: number;
+        executedCount?: number;
+        skippedCount?: number;
         message?: string;
         error?: string;
       } = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Campaign simulation failed.");
+      if (!response.ok) throw new Error(result.error ?? "Simulated / Demo run failed.");
       setNotice(
-        `${result.message} ${result.successfulCount ?? 0} successful, ${result.failedCount ?? 0} failed.`,
+        result.message ??
+          `Simulated / Demo run complete: ${result.executedCount ?? 0} demo_executed, ${result.skippedCount ?? 0} skipped.`,
       );
       setCampaign(null);
+      setShowEditSettings(false);
+      setShowHeldBackList(false);
       await refresh();
     } catch (requestError) {
       setError(campaignErrorMessage(requestError));
     } finally {
-      setIsExecuting(false);
+      setIsSimulating(false);
     }
   };
 
+  const handleCancelDraft = async () => {
+    if (!campaign || isCancelling) return;
+    setIsCancelling(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/voice/campaigns/${campaign.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const result: { message?: string; error?: string } = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Draft could not be cancelled.");
+      setCampaign(null);
+      setShowEditSettings(false);
+      setNotice(result.message ?? "Campaign draft cancelled.");
+      await refresh();
+    } catch (requestError) {
+      setError(campaignErrorMessage(requestError));
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const currentVersion = campaign?.version ?? 1;
+  const approvedVersion = campaign?.approvedVersion ?? null;
+  const isCurrentVersionApproved =
+    Boolean(campaign) &&
+    campaign?.status === "approved" &&
+    approvedVersion !== null &&
+    approvedVersion === currentVersion;
+
+  const heldBackItems = campaign?.heldBack ?? [];
+  const reasonEntries = Object.entries(campaign?.reasonCounts ?? {}).filter(
+    ([, count]) => count > 0,
+  ) as Array<[HoldBackReason, number]>;
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-9">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-lime-700">DukaanOS workspace</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-            Marketing Campaigns
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+              Marketing campaigns
+            </h1>
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+              Simulated / Demo
+            </span>
+          </div>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Create relevant offers from real customer purchases, review every message, and simulate safely.
+            Filter eligible customers by segment, phone, consent, opt-out, cooldown, and cap. Review and approve a version before running a Simulated / Demo execution.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void createCampaign()}
-          disabled={isCreating || Boolean(campaign)}
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isCreating ? (
-            <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Megaphone size={16} aria-hidden="true" />
-          )}
-          Create 15% campaign
-        </button>
       </header>
+
+      
 
       {notice && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
@@ -286,129 +474,364 @@ export function MarketingCampaigns() {
         </p>
       )}
 
-      {/* Campaign Execution Settings */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-900">Campaign Execution Mode</h2>
-              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                Active: {executionMode === "demo" ? "Simulated / Demo" : "Real WhatsApp"}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Configure whether approved campaigns run in safe simulation or dispatch via Meta Cloud API.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSelectMode("demo")}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                executionMode === "demo"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <Check size={14} className={executionMode === "demo" ? "opacity-100" : "opacity-0"} aria-hidden="true" />
-              Simulated / Demo
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSelectMode("whatsapp")}
-              disabled={!isWhatsAppConfigured}
-              title={
-                !isWhatsAppConfigured
-                  ? "Real WhatsApp integration is not configured yet. Campaigns will run in demo mode."
-                  : "Switch to official WhatsApp Cloud API sending"
-              }
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                executionMode === "whatsapp"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : isWhatsAppConfigured
-                    ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    : "cursor-not-allowed border border-slate-200 bg-slate-50 text-slate-400 opacity-75"
-              }`}
-            >
-              {!isWhatsAppConfigured ? (
-                <Lock size={12} className="text-slate-400" aria-hidden="true" />
-              ) : (
-                <Check size={14} className={executionMode === "whatsapp" ? "opacity-100" : "opacity-0"} aria-hidden="true" />
-              )}
-              Real WhatsApp
-              {!isWhatsAppConfigured && (
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                  Not Configured
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Clear status notice for WhatsApp configuration */}
-        {!isWhatsAppConfigured && (
-          <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
-            <Info size={16} className="mt-0.5 shrink-0 text-amber-700" aria-hidden="true" />
+      {/* Segment & Offer Builder Form (shown when no active draft exists) */}
+      {!isLoading && !campaign && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-4">
             <div>
-              <p className="font-semibold text-amber-950">
-                {settingsNotice}
-              </p>
-              <p className="mt-0.5 text-amber-800">
-                Meta WhatsApp Cloud API credentials (access token, phone number ID, and app secret) must be configured on the server before live customer messaging can be enabled.
+              <h2 className="text-base font-semibold text-slate-900">New campaign draft</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Choose a target segment, offer text, cooldown window, and message cap.
               </p>
             </div>
+            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+              Simulated / Demo
+            </span>
           </div>
-        )}
-      </section>
+
+          <form onSubmit={createCampaign} className="mt-4 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-slate-600">
+                Target segment
+                <select
+                  value={targetSegment}
+                  onChange={(event) => setTargetSegment(event.target.value as WinbackSegment)}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                >
+                  {SEGMENT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-xs font-medium text-slate-600">
+                Offer 
+                <input
+                  required
+                  value={offerText}
+                  onChange={(event) => setOfferText(event.target.value)}
+                  placeholder="e.g. 15% off your next order"
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+              </label>
+
+              <label className="block text-xs font-medium text-slate-600">
+                Campaign name (optional)
+                <input
+                  value={campaignName}
+                  onChange={(event) => setCampaignName(event.target.value)}
+                  placeholder="Auto-filled from offer and segment"
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium text-slate-600">
+                  Cooldown days
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={cooldownDays}
+                    onChange={(event) => setCooldownDays(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+
+                <label className="block text-xs font-medium text-slate-600">
+                  Message cap
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={5000}
+                    value={messageCap}
+                    onChange={(event) => setMessageCap(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <label className="block text-xs font-medium text-slate-600">
+              Custom message template (optional, supports {"{{name}}"}, {"{{offer}}"}, {"{{category}}"}, {"{{shop}}"})
+              <input
+                value={templateText}
+                onChange={(event) => setTemplateText(event.target.value)}
+                placeholder="Leave blank to choose a deterministic variant per customer"
+                className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50"
+            >
+              {isCreating ? (
+                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Megaphone size={16} aria-hidden="true" />
+              )}
+              Create Campaign
+            </button>
+          </form>
+        </section>
+      )}
 
       {isLoading && (
         <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
           <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-          Loading campaign history…
+          Loading campaigns...
         </p>
       )}
 
+      {/* Active Draft Review, Audience Breakdown, Editing, Approval & Simulate Send */}
       {campaign && (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-lime-700">Review before execution</p>
-                <span className="rounded bg-lime-100 px-2 py-0.5 text-[11px] font-semibold text-lime-800">
-                  Mode: Demo Only
-                </span>
+          <div className="border-b border-slate-100 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                    Simulated / Demo
+                  </span>
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                    Version v{currentVersion}
+                  </span>
+                  {isCurrentVersionApproved ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                      <ShieldCheck size={12} aria-hidden="true" />
+                      Approved v{approvedVersion}
+                    </span>
+                  ) : (
+                    <span className="rounded bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                      Approval required
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="mt-2 text-lg font-semibold text-slate-950">
+                  {campaign.campaign.name}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Segment: {campaign.targetSegment ?? "inactive"} · Offer: {campaign.offerText ?? `${campaign.discountPercent}% off`} · Cooldown: {campaign.cooldownDays ?? 14} days · Cap: {campaign.messageCap ?? 50}
+                </p>
               </div>
-              <h2 className="mt-1 text-lg font-semibold text-slate-950">{campaign.campaign.name}</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                {campaign.eligibleCustomerCount} eligible customers · {campaign.discountPercent}% discount · {campaign.campaign.channel}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Each message uses the customer&apos;s actual last purchase and category when available. No messages will be delivered.
-              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditSettings((prev) => !prev)}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  {showEditSettings ? "Close settings" : "Edit settings"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleApproveVersion()}
+                  disabled={isApproving || isCurrentVersionApproved}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isApproving ? (
+                    <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Check size={14} aria-hidden="true" />
+                  )}
+                  {isCurrentVersionApproved ? `Approved v${currentVersion}` : `Review and approve v${currentVersion}`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSimulateSend()}
+                  disabled={isSimulating || !isCurrentVersionApproved}
+                  title={
+                    isCurrentVersionApproved
+                      ? "Run Simulated / Demo execution"
+                      : "Approve the current version before simulating"
+                  }
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-lime-300 px-4 text-xs font-semibold text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSimulating ? (
+                    <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Play size={14} aria-hidden="true" />
+                  )}
+                  Run Simulated / Demo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleCancelDraft()}
+                  disabled={isCancelling}
+                  className="inline-flex h-10 items-center gap-1 rounded-lg border border-rose-200 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                >
+                  <X size={14} aria-hidden="true" />
+                  Cancel
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void executeCampaign()}
-              disabled={isExecuting || campaign.messages.length === 0}
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-lime-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-lime-200 disabled:opacity-50"
-            >
-              {isExecuting ? (
-                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-              ) : (
-                <Check size={16} aria-hidden="true" />
-              )}
-              Approve demo campaign
-            </button>
+
+            {showEditSettings && (
+              <form
+                onSubmit={updateSettings}
+                className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
+              >
+                <p className="text-xs font-medium text-slate-700">
+                  Saving settings increments the campaign version to v{currentVersion + 1} and clears approval.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Segment
+                    <select
+                      value={targetSegment}
+                      onChange={(event) => setTargetSegment(event.target.value as WinbackSegment)}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                    >
+                      {SEGMENT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-slate-600">
+                    Offer text
+                    <input
+                      required
+                      value={offerText}
+                      onChange={(event) => setOfferText(event.target.value)}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-slate-600">
+                    Cooldown days
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={cooldownDays}
+                      onChange={(event) => setCooldownDays(event.target.value)}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-slate-600">
+                    Message cap
+                    <input
+                      required
+                      type="number"
+                      min={1}
+                      max={5000}
+                      value={messageCap}
+                      onChange={(event) => setMessageCap(event.target.value)}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                    />
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={isUpdatingSettings}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    {isUpdatingSettings && <LoaderCircle size={13} className="animate-spin" />}
+                    Save settings (v{currentVersion + 1})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditSettings(false)}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600"
+                  >
+                    Close
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Eligible vs Held-back Summary */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
+                <p className="text-xs font-medium text-emerald-800">Eligible recipients</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">
+                  {campaign.eligibleCount ?? campaign.messages.length}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Passed segment, phone, consent, opt-out, cooldown, and cap checks.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium text-slate-600">Held back</p>
+                    <p className="mt-1 text-2xl font-semibold text-slate-950">
+                      {campaign.heldBackCount ?? heldBackItems.length}
+                    </p>
+                  </div>
+                  {heldBackItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHeldBackList((prev) => !prev)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      {showHeldBackList ? "Hide list" : "View reasons"}
+                      {showHeldBackList ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  )}
+                </div>
+                {reasonEntries.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {reasonEntries.map(([reason, count]) => (
+                      <span
+                        key={reason}
+                        className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200"
+                      >
+                        {HOLD_BACK_REASON_LABELS[reason]}: {count}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-0.5 text-xs text-slate-500">No customers held back.</p>
+                )}
+              </div>
+            </div>
+
+            {showHeldBackList && heldBackItems.length > 0 && (
+              <div className="mt-3 max-h-60 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                {heldBackItems.map((item) => (
+                  <div
+                    key={item.customerId}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs"
+                  >
+                    <div>
+                      <span className="font-medium text-slate-900">{item.customerName}</span>
+                      <span className="ml-2 text-slate-500">
+                        {item.customerSegment} · consent: {item.marketingConsent}
+                      </span>
+                      <p className="mt-0.5 text-slate-500">{item.detail}</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700">
+                      {item.reasonLabel}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between bg-slate-50 px-5 py-3">
             <p className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Users size={16} aria-hidden="true" />
-              Preview all {campaign.messages.length} messages
+              Queued messages ({campaign.messages.length}) · Simulated / Demo
             </p>
-            <span className="text-xs text-slate-500">Each message can be edited or regenerated</span>
+            <span className="text-xs text-slate-500">
+              Editing or regenerating increments version and clears approval
+            </span>
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -416,7 +839,12 @@ export function MarketingCampaigns() {
               <article key={message.customerId} className="p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-slate-900">{message.customerName}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-slate-900">{message.customerName}</h3>
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {message.status}
+                      </span>
+                    </div>
                     <p className="mt-1 text-xs leading-5 text-slate-500">
                       Segment: {message.customerSegment}
                       {" · "}Last purchase: {formatDate(message.lastPurchaseAt)}
@@ -427,10 +855,15 @@ export function MarketingCampaigns() {
                   <div className="flex shrink-0 items-center gap-2">
                     <button
                       type="button"
+                      disabled={regeneratingId === message.customerId}
                       onClick={() => void regenerateMessage(message.customerId)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                     >
-                      <RefreshCw size={14} aria-hidden="true" />
+                      <RefreshCw
+                        size={14}
+                        className={regeneratingId === message.customerId ? "animate-spin" : undefined}
+                        aria-hidden="true"
+                      />
                       Regenerate
                     </button>
                     {editingCustomerId === message.customerId ? (
@@ -475,27 +908,40 @@ export function MarketingCampaigns() {
             ))}
             {campaign.messages.length === 0 && (
               <p className="p-6 text-sm text-slate-500">
-                There are no customers eligible for this offer based on the last 30 days of purchase history.
+                No eligible customers matched the current segment, phone, consent, opt-out, cooldown, and cap rules. Inspect the held-back reasons above or adjust campaign settings.
               </p>
             )}
           </div>
         </section>
       )}
 
+      {/* Campaign History */}
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
-            <h2 className="font-semibold text-slate-900">Campaign history</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Simulated sends are recorded per customer; delivery is not claimed.</p>
+            <h2 className="font-semibold text-slate-900">Campaign history (Simulated / Demo)</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Recorded per customer as demo_executed or skipped with skip reasons.
+            </p>
           </div>
-          <Send size={17} className="text-slate-400" aria-hidden="true" />
+          <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+            Simulated / Demo
+          </span>
         </div>
         {history.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">No campaigns recorded yet.</p>
+          <p className="px-5 py-8 text-center text-sm text-slate-500">
+            No Simulated / Demo campaigns recorded yet.
+          </p>
         ) : (
           <div className="divide-y divide-slate-100">
-            {history.slice().reverse().map((entry) => {
+            {history.map((entry) => {
               const isExpanded = expandedCampaignId === entry.id;
+              const isCancelled = entry.status === "cancelled";
+              const executedCount = entry.successfulCount ?? 0;
+              const skippedCount =
+                entry.skippedCount ??
+                entry.messages.filter((m) => m.status === "skipped").length;
+
               return (
                 <article key={entry.id}>
                   <button
@@ -504,26 +950,21 @@ export function MarketingCampaigns() {
                     aria-expanded={isExpanded}
                     className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50"
                   >
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                      entry.status === "demo_executed" || entry.status === "simulated"
-                        ? "bg-blue-50 text-blue-700"
-                        : entry.status === "draft"
-                          ? "bg-amber-50 text-amber-700"
-                          : "bg-slate-100 text-slate-600"
-                    }`}>
-                      {entry.status === "demo_executed" || entry.status === "simulated"
-                        ? "Demo Executed"
-                        : entry.status === "approved"
-                          ? "Approved"
-                          : entry.status}
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        isCancelled
+                          ? "bg-slate-100 text-slate-600"
+                          : "bg-blue-50 text-blue-700"
+                      }`}
+                    >
+                      {isCancelled ? "Cancelled" : "Simulated / Demo"}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-slate-900">{entry.name}</span>
+                      <span className="block truncate text-sm font-medium text-slate-900">
+                        {entry.name}
+                      </span>
                       <span className="mt-0.5 block text-xs text-slate-500">
-                        {entry.audienceSize} customers · {entry.channel} · Mode: {entry.executionMode === "whatsapp" ? "Real WhatsApp" : "Demo"}
-                        {entry.successfulCount !== null
-                          ? ` · ${entry.successfulCount} successful · ${entry.failedCount ?? 0} failed`
-                          : ""}
+                        v{entry.version ?? 1} · {entry.channel} · {executedCount} demo_executed · {skippedCount} skipped
                       </span>
                     </span>
                     {isExpanded ? (
@@ -533,27 +974,42 @@ export function MarketingCampaigns() {
                     )}
                   </button>
                   {isExpanded && (
-                    <div className="space-y-3 bg-slate-50 px-5 py-4">
+                    <div className="space-y-2.5 bg-slate-50 px-5 py-4">
                       {entry.messages.length === 0 ? (
                         <p className="text-xs text-slate-500">
-                          This existing campaign has no customer-wise simulation records.
+                          No recipient records stored for this campaign.
                         </p>
                       ) : (
                         entry.messages.map((message) => (
-                          <div key={message.customerId} className="rounded-xl border border-slate-200 bg-white p-3">
+                          <div
+                            key={`${entry.id}-${message.customerId}`}
+                            className="rounded-xl border border-slate-200 bg-white p-3"
+                          >
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-sm font-medium text-slate-800">{message.customerName}</p>
-                              <span className={`text-xs font-medium ${
-                                message.status === "demo_executed" || message.status === "simulated"
-                                  ? "text-blue-700"
-                                  : "text-red-700"
-                              }`}>
+                              <p className="text-sm font-medium text-slate-800">
+                                {message.customerName}
+                              </p>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  message.status === "demo_executed" || message.status === "simulated"
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
                                 {message.status === "demo_executed" || message.status === "simulated"
-                                  ? "Demo Executed (Simulated)"
-                                  : "Simulation failed"}
+                                  ? "demo_executed (Simulated / Demo)"
+                                  : `skipped (${message.skipReason ?? "held_back"})`}
                               </span>
                             </div>
-                            <p className="mt-1 text-xs leading-5 text-slate-600">{message.message}</p>
+                            {message.message ? (
+                              <p className="mt-1 text-xs leading-5 text-slate-600">
+                                {message.message}
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                {message.result ?? "Held back during eligibility check."}
+                              </p>
+                            )}
                           </div>
                         ))
                       )}

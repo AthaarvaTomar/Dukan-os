@@ -7,12 +7,12 @@ import {
   Mic,
   Volume2,
   VolumeX,
-  Sparkles,
   RotateCcw,
   Square,
   HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useBusinessInfo } from "@/components/dashboard/business-context";
 import { useDemoStore } from "@/components/dashboard/use-demo-store";
 import { useVoice } from "@/components/assistant/use-voice";
 import { toast } from "sonner";
@@ -66,12 +66,13 @@ export function AssistantLoading() {
 }
 
 export function AssistantChat() {
+  const { businessName } = useBusinessInfo();
   const { data } = useDemoStore();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome-1",
       sender: "assistant",
-      text: "Namaste! I am your DukaanOS Assistant. You can ask me about today's sales, low-stock items, inactive customers, or get a weekly business summary in Hindi, Hinglish, or English.",
+      text: "Ask about today's sales, low-stock products, inactive customers, or a weekly summary in Hindi, Hinglish, or English.",
       timeLabel: "Just now",
     },
   ]);
@@ -180,7 +181,7 @@ export function AssistantChat() {
       {
         id: `welcome-${Date.now()}`,
         sender: "assistant",
-        text: "History cleared. How can I help your store today?",
+        text: "Chat cleared. Ask a question about your store data.",
         timeLabel: "Just now",
       },
     ]);
@@ -204,14 +205,13 @@ export function AssistantChat() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold text-slate-900">DukaanOS Assistant</h1>
-              <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Store Data
+              <h1 className="text-base font-semibold text-slate-900">DukaanOS assistant</h1>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                Store data
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Sharma General Store · Ask in Hindi, Hinglish, or English
+              {businessName} · Hindi, Hinglish, or English
             </p>
           </div>
         </div>
@@ -361,9 +361,8 @@ export function AssistantChat() {
       {/* Suggestion Chips */}
       <div className="border-t border-slate-100 px-4 pt-3 sm:px-6">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
-          <span className="flex shrink-0 items-center gap-1 text-slate-400 font-medium mr-1">
-            <Sparkles size={13} className="text-lime-500" />
-            Suggestions:
+          <span className="shrink-0 font-medium text-slate-400 mr-1">
+            Try asking:
           </span>
           {suggestions.map((item) => (
             <button

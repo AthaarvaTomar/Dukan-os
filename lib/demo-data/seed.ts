@@ -36,13 +36,16 @@ const localities = [
 
 function createCustomers(anchor: Date): Customer[] {
   return customerNames.map((name, index) => ({
-  id: `cus-${String(index + 1).padStart(3, "0")}`,
-  name,
-  phone: `+91 90000 ${String(10001 + index).slice(-5)}`,
-  email: `${name.toLowerCase().replaceAll(" ", ".")}@example.com`,
-  address: `${index + 12}, ${localities[index % localities.length]}, Bengaluru`,
-  joinedAt: daysAgo(index >= 14 && index <= 21 ? 19 + (index % 10) : 120 + index * 3, anchor),
-  notes: index % 7 === 0 ? "Prefers UPI payments" : "",
+    id: `cus-${String(index + 1).padStart(3, "0")}`,
+    name,
+    phone: `+91 90000 ${String(10001 + index).slice(-5)}`,
+    email: `${name.toLowerCase().replaceAll(" ", ".")}@example.com`,
+    address: `${index + 12}, ${localities[index % localities.length]}, Bengaluru`,
+    joinedAt: daysAgo(index >= 14 && index <= 21 ? 19 + (index % 10) : 120 + index * 3, anchor),
+    notes: index % 7 === 0 ? "Prefers UPI payments" : "",
+    marketingConsent:
+      index % 9 === 0 ? "revoked" : index % 5 === 0 ? "unknown" : "granted",
+    optedOutAt: index % 11 === 0 ? daysAgo(10, anchor) : null,
   }));
 }
 

@@ -15,11 +15,14 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "DukaanOS — Your business, in one place",
+    default: "DukaanOS",
     template: "%s | DukaanOS",
   },
   description:
-    "A clearer view of your shop, customers, and growth — all in one place.",
+    "Billing, inventory, customer records, and sales reporting for retail shops.",
+  other: {
+    "darkreader-lock": "",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -27,8 +30,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full" suppressHydrationWarning>{children}</body>
     </html>
   );
 }

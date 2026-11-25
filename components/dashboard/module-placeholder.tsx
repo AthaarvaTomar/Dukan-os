@@ -18,7 +18,7 @@ export function ModulePlaceholder({ href }: { href: string }) {
         {item?.label}
       </h1>
       <p className="mt-3 max-w-md text-sm leading-6 text-slate-500">
-        This space is ready for what&apos;s next. Your {item?.label.toLowerCase()} tools will live here as your DukaanOS workspace grows.
+        {item?.label} reporting is not enabled yet. View current sales, customer, and stock metrics on the overview page.
       </p>
       <Link
         href="/"

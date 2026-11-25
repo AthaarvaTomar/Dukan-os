@@ -25,16 +25,16 @@ export const navigationGroups: {
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
       { href: "/billing", label: "Billing", icon: Receipt },
-      { href: "/ai-assistant", label: "AI Assistant", icon: Bot },
+      { href: "/ai-assistant", label: "AI assistant", icon: Bot },
       { href: "/customers", label: "Customers", icon: UsersRound },
-      { href: "/marketing", label: "Marketing Campaigns", icon: Megaphone },
+      { href: "/marketing", label: "Marketing campaigns", icon: Megaphone },
     ],
   },
   {
     label: "Manage",
     items: [
       { href: "/inventory", label: "Inventory", icon: Package },
-      { href: "/insights", label: "Business Insights", icon: ChartNoAxesCombined },
+      { href: "/insights", label: "Business insights", icon: ChartNoAxesCombined },
     ],
   },
   {

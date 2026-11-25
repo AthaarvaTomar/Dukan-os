@@ -62,7 +62,7 @@ function errorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "name" in error) {
     const name = String(error.name);
     const message = error instanceof Error ? error.message : "";
-    const detail = message ? ` (Detail: ${name} — ${message})` : ` (Detail: ${name})`;
+    const detail = message ? ` (${name}: ${message})` : ` (${name})`;
     if (name === "NotFoundError") {
       // The SDK also throws NotFoundError for HTTP 404 from the signed-URL
       // request, so only treat it as a missing microphone for device errors.
@@ -127,7 +127,7 @@ export function AiAssistant() {
       id: "welcome",
       role: "assistant",
       content:
-        "Namaste! Ask me about your sales, profits, stock, customers, or business insights.",
+        "Ask about sales, profits, stock, or customers.",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
@@ -406,7 +406,7 @@ export function AiAssistant() {
       <header>
         <p className="text-sm font-medium text-lime-700">DukaanOS workspace</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-          AI Assistant
+          AI assistant
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
           Ask about your shop in Hindi, English, or Hinglish. Use chat or start a voice conversation.

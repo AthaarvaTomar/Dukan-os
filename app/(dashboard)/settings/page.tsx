@@ -85,10 +85,9 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:px-6 lg:px-9">
       <header>
-        <p className="text-sm font-medium text-lime-700">DukaanOS workspace</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Settings</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Settings</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Your shop profile and business rules.
+          Update your shop name and stock rules.
         </p>
       </header>
 
