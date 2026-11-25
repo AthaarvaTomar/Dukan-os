@@ -1,0 +1,51 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Runs every Monday and Thursday at 09:00 UTC (well within Supabase's 7-day inactivity pause window)
+    - cron: "0 9 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          URL="${SUPABASE_URL%/}"
+          KEY="${SUPABASE_SERVICE_ROLE_KEY:-$SUPABASE_ANON_KEY}"
+
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            MSG="Missing GitHub Actions secrets: set SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY) in Settings -> Secrets and variables -> Actions."
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::$MSG"
+              exit 1
+            fi
+            echo "::warning::$MSG Skipping scheduled keep-alive."
+            exit 0
+          fi
+
+          HTTP_STATUS=$(curl -sS -o /tmp/supabase-keepalive.out -w "%{http_code}" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY" \
+            "$URL/rest/v1/businesses?select=id&limit=1")
+
+          echo "Supabase keep-alive HTTP status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error::Supabase keep-alive failed with HTTP $HTTP_STATUS"
+            cat /tmp/supabase-keepalive.out
+            exit 1
+          fi
+
+          echo "Supabase keep-alive succeeded at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/demo-data.test.ts tests/db-mapping.test.ts tests/whatsapp-integration.test.ts tests/billing.test.ts tests/auth.test.ts tests/winback-campaigns.test.ts",
+    "test": "tsx --test tests/demo-data.test.ts tests/db-mapping.test.ts tests/whatsapp-integration.test.ts tests/billing.test.ts tests/auth.test.ts tests/winback-campaigns.test.ts tests/supabase-keepalive.test.ts",
     "lint": "eslint"
   },
   "dependencies": {
