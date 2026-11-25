@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Check, LoaderCircle, Store } from "lucide-react";
+import { useBusinessInfo } from "@/components/dashboard/business-context";
+import { isValidUpiId } from "@/lib/billing";
 
 interface BusinessSettings {
   id: string;
   name: string;
   currency: string;
   allow_negative_stock: boolean;
+  upi_id?: string | null;
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { updateBusinessInfo } = useBusinessInfo();
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [name, setName] = useState("");
+  const [upiId, setUpiId] = useState("");
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -28,16 +35,32 @@ export default function SettingsPage() {
         const supabase = createSupabaseBrowserClient();
         const businessId = await fetchMyBusinessId(supabase);
         if (!businessId) throw new Error("No shop found for your account.");
-        const { data, error } = await supabase
+
+        let loaded: BusinessSettings | null = null;
+        const primary = await supabase
           .from("businesses")
-          .select("id, name, currency, allow_negative_stock")
+          .select("id, name, currency, allow_negative_stock, upi_id")
           .eq("id", businessId)
           .single();
-        if (error) throw new Error(error.message);
-        if (!active || !data) return;
-        const loaded = data as BusinessSettings;
+
+        if (!primary.error && primary.data) {
+          loaded = primary.data as BusinessSettings;
+        } else if (primary.error?.message?.includes("upi_id")) {
+          const fallback = await supabase
+            .from("businesses")
+            .select("id, name, currency, allow_negative_stock")
+            .eq("id", businessId)
+            .single();
+          if (fallback.error) throw new Error(fallback.error.message);
+          loaded = fallback.data ? { ...(fallback.data as BusinessSettings), upi_id: "" } : null;
+        } else if (primary.error) {
+          throw new Error(primary.error.message);
+        }
+
+        if (!active || !loaded) return;
         setSettings(loaded);
         setName(loaded.name);
+        setUpiId(loaded.upi_id ?? "");
         setAllowNegativeStock(loaded.allow_negative_stock);
       } catch (loadFailure) {
         if (active) {
@@ -59,8 +82,14 @@ export default function SettingsPage() {
     if (busy || !settings) return;
     setFormError(null);
     setNotice(null);
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    const trimmedUpiId = upiId.trim();
+    if (!trimmedName) {
       setFormError("Shop name is required.");
+      return;
+    }
+    if (trimmedUpiId && !isValidUpiId(trimmedUpiId)) {
+      setFormError("Enter a valid UPI ID (for example, yourshop@okaxis or 9876543210@ybl).");
       return;
     }
     setBusy(true);
@@ -69,9 +98,22 @@ export default function SettingsPage() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase
         .from("businesses")
-        .update({ name: name.trim(), allow_negative_stock: allowNegativeStock })
+        .update({
+          name: trimmedName,
+          allow_negative_stock: allowNegativeStock,
+          upi_id: trimmedUpiId,
+        })
         .eq("id", settings.id);
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (error.message.includes("upi_id")) {
+          throw new Error(
+            "The upi_id column is missing in Supabase. Run migration 0007_upi_qr_billing.sql and try saving again.",
+          );
+        }
+        throw new Error(error.message);
+      }
+      updateBusinessInfo({ businessName: trimmedName, upiId: trimmedUpiId });
+      router.refresh();
       setNotice("Shop settings saved.");
     } catch (saveFailure) {
       setFormError(
@@ -87,7 +129,7 @@ export default function SettingsPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Settings</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Update your shop name and stock rules.
+          Update your shop name, UPI payment ID, and stock rules.
         </p>
       </header>
 
@@ -113,6 +155,22 @@ export default function SettingsPage() {
               onChange={(event) => setName(event.target.value)}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm outline-none transition focus:border-lime-500 focus:bg-white focus:ring-2 focus:ring-lime-100"
             />
+          </label>
+
+          <label className="block text-xs font-medium text-slate-600">
+            UPI ID
+            <input
+              type="text"
+              value={upiId}
+              onChange={(event) => setUpiId(event.target.value)}
+              placeholder="e.g. sharmastore@okaxis or 9876543210@ybl"
+              autoComplete="off"
+              spellCheck={false}
+              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm outline-none transition focus:border-lime-500 focus:bg-white focus:ring-2 focus:ring-lime-100"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-400">
+              Used to generate UPI payment QR codes on billing receipts. Leave blank to hide the QR code.
+            </span>
           </label>
 
           <label className="block text-xs font-medium text-slate-600">

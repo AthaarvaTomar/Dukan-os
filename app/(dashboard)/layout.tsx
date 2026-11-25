@@ -65,11 +65,25 @@ async function AuthenticatedDashboard({ children }: { children: ReactNode }) {
     return <AuthRedirect to="/onboarding" message="Setting up your shop…" />;
   }
 
-  const { data: business } = await supabase
+  let businessName = "Your shop";
+  let businessUpiId = "";
+  const { data: businessWithUpi, error: businessQueryError } = await supabase
     .from("businesses")
-    .select("name")
+    .select("name, upi_id")
     .eq("id", businessId)
     .single();
+
+  if (businessWithUpi) {
+    businessName = businessWithUpi.name ?? "Your shop";
+    businessUpiId = businessWithUpi.upi_id ?? "";
+  } else if (businessQueryError) {
+    const { data: fallbackBusiness } = await supabase
+      .from("businesses")
+      .select("name")
+      .eq("id", businessId)
+      .single();
+    businessName = fallbackBusiness?.name ?? "Your shop";
+  }
 
   const displayName =
     (user.user_metadata?.full_name as string | undefined)?.trim() || user.email || "Merchant";
@@ -78,7 +92,8 @@ async function AuthenticatedDashboard({ children }: { children: ReactNode }) {
     <DashboardShell
       userName={displayName}
       userEmail={user.email ?? ""}
-      businessName={business?.name ?? "Your shop"}
+      businessName={businessName}
+      upiId={businessUpiId}
     >
       {children}
     </DashboardShell>

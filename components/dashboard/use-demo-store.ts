@@ -96,6 +96,11 @@ export function useDemoStore() {
       businessActions.createSale(sale),
     [],
   );
+  const markSalePaid = useCallback(
+    (saleId: string, paymentMethod: "cash" | "upi") =>
+      businessActions.markSalePaid(saleId, paymentMethod),
+    [],
+  );
   const cancelSale = useCallback(
     (saleId: string) => businessActions.cancelSale(saleId),
     [],
@@ -117,6 +122,7 @@ export function useDemoStore() {
     removeSupplierOrder,
     adjustStock,
     createSale,
+    markSalePaid,
     cancelSale,
     reset: businessActions.reset,
   };

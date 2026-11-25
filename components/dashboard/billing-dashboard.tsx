@@ -2,27 +2,36 @@
 
 import {
   AlertCircle,
+  CheckCircle2,
+  Clock,
   LoaderCircle,
   MessageCircle,
   Plus,
   Printer,
+  QrCode,
   Receipt,
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { useBusinessInfo } from "@/components/dashboard/business-context";
+import { UpiQrCode } from "@/components/dashboard/upi-qr-code";
 import { useDemoStore } from "@/components/dashboard/use-demo-store";
 import { Button } from "@/components/ui/button";
 import {
   buildTransactionItems,
+  buildUpiPaymentUri,
   buildWhatsAppReceiptUrl,
   calculateBill,
   formatBillingCurrency,
+  getInvoiceNumber,
+  MARK_PAID_METHOD_OPTIONS,
   PAYMENT_METHOD_OPTIONS,
   validateBillItems,
   type BillDraftItem,
+  type MarkPaidMethod,
 } from "@/lib/billing";
 import { segmentCustomers } from "@/lib/demo-data/analytics";
 import type { PaymentMethod, Transaction } from "@/lib/demo-data/types";
@@ -62,17 +71,20 @@ function paymentLabel(method: PaymentMethod): string {
 }
 
 export function BillingDashboard() {
-  const { businessName } = useBusinessInfo();
-  const { data, status, error, createSale, reset } = useDemoStore();
+  const { businessName, upiId } = useBusinessInfo();
+  const { data, status, error, createSale, markSalePaid, reset } = useDemoStore();
 
   const [customerId, setCustomerId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantityInput, setQuantityInput] = useState("1");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi");
   const [draftItems, setDraftItems] = useState<BillDraftItem[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<Transaction | null>(null);
+  const [markPaidMethod, setMarkPaidMethod] = useState<MarkPaidMethod>("upi");
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null);
 
   const sortedCustomers = useMemo(
     () =>
@@ -130,6 +142,24 @@ export function BillingDashboard() {
       customer: receiptCustomer,
     });
   }, [activeReceipt, businessName, receiptCustomer]);
+
+  const activeReceiptInvoiceNo = activeReceipt ? getInvoiceNumber(activeReceipt.id) : "";
+
+  const activeReceiptUpiUri = useMemo(() => {
+    if (!activeReceipt) return null;
+    return buildUpiPaymentUri({
+      upiId,
+      shopName: businessName,
+      amount: activeReceipt.totalAmount,
+      invoiceNo: getInvoiceNumber(activeReceipt.id),
+    });
+  }, [activeReceipt, businessName, upiId]);
+
+  const selectReceipt = (bill: Transaction) => {
+    setActiveReceipt(bill);
+    setMarkPaidMethod(bill.paymentMethod === "cash" ? "cash" : "upi");
+    setMarkPaidError(null);
+  };
 
   const handleAddItem = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -207,7 +237,7 @@ export function BillingDashboard() {
         items,
         discount: 0,
         paymentMethod,
-        status: "completed",
+        status: "processing",
       });
 
       if (!result.ok) {
@@ -216,7 +246,7 @@ export function BillingDashboard() {
         return;
       }
 
-      setActiveReceipt(result.transaction);
+      selectReceipt(result.transaction);
       setDraftItems([]);
       setCustomerId("");
       setSelectedProductId("");
@@ -226,10 +256,30 @@ export function BillingDashboard() {
         ? customersById.get(result.transaction.customerId)?.name ?? "Customer"
         : "Walk-in";
       toast.success(
-        `Bill saved for ${savedCustomerName} (${formatBillingCurrency(result.transaction.totalAmount)})`,
+        `Bill saved for ${savedCustomerName} (${formatBillingCurrency(result.transaction.totalAmount)}). Confirm payment on the receipt.`,
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleMarkAsPaid = async () => {
+    if (!activeReceipt || markingPaid) return;
+    setMarkPaidError(null);
+    setMarkingPaid(true);
+    try {
+      const result = await markSalePaid(activeReceipt.id, markPaidMethod);
+      if (!result.ok) {
+        setMarkPaidError(result.error);
+        toast.error(result.error);
+        return;
+      }
+      setActiveReceipt(result.transaction);
+      toast.success(
+        `Bill ${getInvoiceNumber(result.transaction.id)} marked as paid (${paymentLabel(markPaidMethod)}).`,
+      );
+    } finally {
+      setMarkingPaid(false);
     }
   };
 
@@ -549,12 +599,25 @@ export function BillingDashboard() {
             <div className="space-y-5">
               <div className="flex items-start justify-between gap-3 border-b border-dashed border-slate-200 pb-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Receipt
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      Receipt
+                    </p>
+                    {activeReceipt.status === "completed" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                        <CheckCircle2 size={12} aria-hidden="true" />
+                        Paid
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        <Clock size={12} aria-hidden="true" />
+                        Pending payment
+                      </span>
+                    )}
+                  </div>
                   <h2 className="mt-1 text-lg font-semibold text-slate-900">{businessName}</h2>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    #{activeReceipt.id.slice(0, 8).toUpperCase()} · {formatBillDateTime(activeReceipt.date)}
+                    {activeReceiptInvoiceNo} · {formatBillDateTime(activeReceipt.date)}
                   </p>
                 </div>
                 <button
@@ -614,6 +677,96 @@ export function BillingDashboard() {
                 <span>Grand total</span>
                 <span>{formatBillingCurrency(activeReceipt.totalAmount)}</span>
               </div>
+
+              {activeReceiptUpiUri ? (
+                <UpiQrCode
+                  upiUri={activeReceiptUpiUri}
+                  upiId={upiId.trim()}
+                  amount={activeReceipt.totalAmount}
+                  invoiceNo={activeReceiptInvoiceNo}
+                />
+              ) : (
+                <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-3 text-xs text-slate-600 print:hidden">
+                  <QrCode size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
+                  <p>
+                    Add your shop UPI ID in{" "}
+                    <Link
+                      href="/settings"
+                      className="font-medium text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                    >
+                      Settings
+                    </Link>{" "}
+                    to show a scannable UPI QR code on receipts.
+                  </p>
+                </div>
+              )}
+
+              {activeReceipt.status === "completed" ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs text-emerald-900 print:hidden">
+                  <span className="inline-flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 size={15} className="text-emerald-600" aria-hidden="true" />
+                    Marked as paid
+                  </span>
+                  <span className="font-semibold">{paymentLabel(activeReceipt.paymentMethod)}</span>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3.5 print:hidden">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">Mark as paid</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                      QR codes cannot automatically confirm payment. Select how the customer paid
+                      after verifying receipt.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Paid payment method">
+                    {MARK_PAID_METHOD_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={markingPaid}
+                        onClick={() => {
+                          setMarkPaidMethod(option.value);
+                          setMarkPaidError(null);
+                        }}
+                        aria-pressed={markPaidMethod === option.value}
+                        className={`h-9 rounded-lg border text-xs font-medium transition-colors disabled:opacity-50 ${
+                          markPaidMethod === option.value
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {markPaidError && (
+                    <p role="alert" className="text-xs text-rose-600">
+                      {markPaidError}
+                    </p>
+                  )}
+
+                  <Button
+                    type="button"
+                    disabled={markingPaid}
+                    onClick={() => void handleMarkAsPaid()}
+                    className="w-full"
+                  >
+                    {markingPaid ? (
+                      <>
+                        <LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
+                        Marking as paid…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={15} aria-hidden="true" />
+                        Mark as paid ({paymentLabel(markPaidMethod)})
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
 
               <div className="flex flex-col gap-2.5 pt-1 print:hidden sm:flex-row">
                 <Button
@@ -703,9 +856,20 @@ export function BillingDashboard() {
                         {summarizeItems(bill)}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-                          {paymentLabel(bill.paymentMethod)}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                            {paymentLabel(bill.paymentMethod)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              bill.status === "completed"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-800"
+                            }`}
+                          >
+                            {bill.status === "completed" ? "Paid" : "Pending"}
+                          </span>
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-slate-900">
                         {formatBillingCurrency(bill.totalAmount)}
@@ -715,7 +879,7 @@ export function BillingDashboard() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setActiveReceipt(bill)}
+                          onClick={() => selectReceipt(bill)}
                         >
                           Receipt
                         </Button>

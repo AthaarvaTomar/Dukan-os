@@ -157,11 +157,13 @@ export function DashboardShell({
   userName,
   userEmail,
   businessName,
+  upiId = "",
 }: {
   children: ReactNode;
   userName: string;
   userEmail: string;
   businessName: string;
+  upiId?: string;
 }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -183,7 +185,7 @@ export function DashboardShell({
   };
 
   return (
-    <BusinessProvider value={{ businessName, userName, userEmail }}>
+    <BusinessProvider value={{ businessName, upiId, userName, userEmail }}>
     <div className="flex min-h-screen bg-[#f7f8fa] text-slate-900">
       {sidebarOpen && (
         <button

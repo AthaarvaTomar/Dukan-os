@@ -15,6 +15,7 @@ import {
   fetchBusinessData,
   fetchMyBusinessId,
   fetchSalesData,
+  markSalePaidRow,
   upsertCampaignRow,
   upsertCustomerRow,
   upsertExpenseRow,
@@ -198,6 +199,10 @@ export type CreateSaleResult =
   | { ok: true; transaction: Transaction }
   | { ok: false; error: string };
 
+export type MarkSalePaidResult =
+  | { ok: true; transaction: Transaction }
+  | { ok: false; error: string };
+
 async function fetchAfterSaleMutation(db: SupabaseClient, activeBusinessId: string) {
   const [{ sales, saleItems }, products, customers, stockMovements] = await Promise.all([
     fetchSalesData(db, activeBusinessId),
@@ -282,6 +287,44 @@ export async function performCreateSale(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "The bill could not be saved.",
+    };
+  }
+}
+
+export async function performMarkSalePaid(
+  db: SupabaseClient,
+  activeBusinessId: string | null,
+  snapshot: DemoData,
+  saleId: string,
+  paymentMethod: "cash" | "upi",
+): Promise<{ ok: true; data: DemoData; transaction: Transaction } | { ok: false; error: string }> {
+  if (!activeBusinessId) {
+    return { ok: false, error: "Shop session is not ready yet." };
+  }
+  const existing = snapshot.transactions.find((entry) => entry.id === saleId);
+  if (!existing) {
+    return { ok: false, error: "Bill not found." };
+  }
+
+  try {
+    await markSalePaidRow(db, activeBusinessId, saleId, paymentMethod);
+    const updatedTransaction: Transaction = {
+      ...existing,
+      paymentMethod,
+      status: "completed",
+    };
+    const updatedData: DemoData = {
+      ...snapshot,
+      asOf: new Date().toISOString(),
+      transactions: snapshot.transactions.map((entry) =>
+        entry.id === saleId ? updatedTransaction : entry,
+      ),
+    };
+    return { ok: true, data: updatedData, transaction: updatedTransaction };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not mark bill as paid.",
     };
   }
 }
@@ -402,6 +445,21 @@ export const businessActions = {
    */
   async createSale(sale: CreateSaleInput): Promise<CreateSaleResult> {
     const outcome = await performCreateSale(client(), businessId, currentData, sale);
+    if (!outcome.ok) return outcome;
+    currentData = outcome.data;
+    notify();
+    return { ok: true, transaction: outcome.transaction };
+  },
+
+  /** Marks an unpaid sale as paid with the confirmed payment method (cash or UPI). */
+  async markSalePaid(saleId: string, paymentMethod: "cash" | "upi"): Promise<MarkSalePaidResult> {
+    const outcome = await performMarkSalePaid(
+      client(),
+      businessId,
+      currentData,
+      saleId,
+      paymentMethod,
+    );
     if (!outcome.ok) return outcome;
     currentData = outcome.data;
     notify();

@@ -180,3 +180,17 @@ export async function cancelSaleRpc(db: Db, saleId: string): Promise<void> {
   const { error } = await db.rpc("cancel_sale", { p_sale_id: saleId });
   if (error) throw new Error(error.message);
 }
+
+export async function markSalePaidRow(
+  db: Db,
+  businessId: string,
+  saleId: string,
+  paymentMethod: "cash" | "upi",
+): Promise<void> {
+  const { error } = await db
+    .from("sales")
+    .update({ status: "completed", payment_method: paymentMethod })
+    .eq("id", saleId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+}

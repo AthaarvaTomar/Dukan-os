@@ -2,15 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import QRCode from "qrcode";
 import {
   applySaleStockReduction,
+  buildUpiPaymentUri,
   buildWhatsAppReceiptUrl,
   calculateBill,
   formatReceiptText,
+  getInvoiceNumber,
+  isValidUpiId,
   validateBillItems,
 } from "../lib/billing.ts";
 import { createSaleRpc } from "../lib/db/queries.ts";
-import { performCreateSale } from "../lib/db/store.ts";
+import { performCreateSale, performMarkSalePaid } from "../lib/db/store.ts";
 import { customerSpending, segmentCustomers } from "../lib/demo-data/analytics.ts";
 import type { Customer, DemoData, Product } from "../lib/demo-data/types.ts";
 
@@ -525,5 +529,112 @@ test("billing: builds WhatsApp wa.me receipt links for customer and Walk-in bill
   });
   assert.ok(urlWalkIn.startsWith("https://wa.me/?text="));
   assert.match(decodeURIComponent(urlWalkIn), /Customer: Walk-in/);
+});
+
+test("billing: validates UPI IDs, builds UPI payment URI, and renders QR data URL", async () => {
+  assert.equal(isValidUpiId("sharma.store@okaxis"), true);
+  assert.equal(isValidUpiId("9876543210@ybl"), true);
+  assert.equal(isValidUpiId("not-a-upi-id"), false);
+  assert.equal(isValidUpiId("shop@"), false);
+  assert.equal(isValidUpiId(""), false);
+
+  const invoiceNo = getInvoiceNumber("abcd1234-0000-0000-0000-000000000000");
+  assert.equal(invoiceNo, "INV-ABCD1234");
+
+  const uri = buildUpiPaymentUri({
+    upiId: "sharma.store@okaxis",
+    shopName: "Sharma General Store",
+    amount: 1499.7,
+    invoiceNo,
+  });
+  assert.equal(
+    uri,
+    "upi://pay?pa=sharma.store@okaxis&pn=Sharma%20General%20Store&am=1499.70&cu=INR&tn=INV-ABCD1234",
+  );
+
+  assert.equal(
+    buildUpiPaymentUri({ upiId: "", shopName: "Shop", amount: 100, invoiceNo }),
+    null,
+  );
+  assert.equal(
+    buildUpiPaymentUri({ upiId: "shop@upi", shopName: "Shop", amount: 0, invoiceNo }),
+    null,
+  );
+
+  const qrDataUrl = await QRCode.toDataURL(uri!);
+  assert.ok(qrDataUrl.startsWith("data:image/png;base64,"));
+});
+
+test("billing: performMarkSalePaid updates payment method and marks pending bill as completed", async () => {
+  let capturedUpdate: Record<string, unknown> | null = null;
+  const capturedEq: Array<[string, unknown]> = [];
+
+  const mockDb = {
+    from(table: string) {
+      assert.equal(table, "sales");
+      return {
+        update(payload: Record<string, unknown>) {
+          capturedUpdate = payload;
+          return {
+            eq(col1: string, val1: unknown) {
+              capturedEq.push([col1, val1]);
+              return {
+                eq(col2: string, val2: unknown) {
+                  capturedEq.push([col2, val2]);
+                  return Promise.resolve({ error: null });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+
+  const snapshot: DemoData = {
+    asOf: "2026-11-11T10:00:00.000Z",
+    customers: sampleCustomers,
+    products: sampleProducts,
+    transactions: [
+      {
+        id: "sale-pending-1",
+        customerId: "cus-new",
+        date: "2026-11-11T10:00:00.000Z",
+        items: [
+          {
+            productId: "prd-tea",
+            productName: "Tata Tea Gold",
+            quantity: 2,
+            unitPrice: 150,
+            unitCost: 120,
+          },
+        ],
+        subtotal: 300,
+        discount: 0,
+        totalAmount: 300,
+        paymentMethod: "upi",
+        status: "processing",
+      },
+    ],
+    expenses: [],
+    campaigns: [],
+  };
+
+  const result = await performMarkSalePaid(mockDb, businessId, snapshot, "sale-pending-1", "cash");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(capturedUpdate, { status: "completed", payment_method: "cash" });
+  assert.deepEqual(capturedEq, [
+    ["id", "sale-pending-1"],
+    ["business_id", businessId],
+  ]);
+  assert.equal(result.transaction.status, "completed");
+  assert.equal(result.transaction.paymentMethod, "cash");
+  assert.equal(result.data.transactions[0]?.status, "completed");
+  assert.equal(result.data.transactions[0]?.paymentMethod, "cash");
+
+  const missing = await performMarkSalePaid(mockDb, businessId, snapshot, "unknown-sale", "upi");
+  assert.equal(missing.ok, false);
 });
 

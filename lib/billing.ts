@@ -241,3 +241,48 @@ export const PAYMENT_METHOD_OPTIONS: Array<{ value: PaymentMethod; label: string
   { value: "card", label: "Card" },
 ];
 
+export type MarkPaidMethod = "cash" | "upi";
+
+export const MARK_PAID_METHOD_OPTIONS: Array<{ value: MarkPaidMethod; label: string }> = [
+  { value: "cash", label: "Cash" },
+  { value: "upi", label: "UPI" },
+];
+
+const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z0-9]{2,64}$/;
+
+export function isValidUpiId(upiId: string): boolean {
+  return UPI_ID_PATTERN.test(upiId.trim());
+}
+
+export function getInvoiceNumber(transactionId: string): string {
+  return `INV-${transactionId.slice(0, 8).toUpperCase()}`;
+}
+
+/**
+ * Builds an NPCI UPI deep-link URI for rendering as a payment QR code:
+ * `upi://pay?pa=<upi-id>&pn=<shop>&am=<amount>&cu=INR&tn=<invoice-no>`
+ */
+export function buildUpiPaymentUri({
+  upiId,
+  shopName,
+  amount,
+  invoiceNo,
+}: {
+  upiId: string;
+  shopName: string;
+  amount: number;
+  invoiceNo: string;
+}): string | null {
+  const trimmedUpiId = upiId.trim();
+  if (!trimmedUpiId || !isValidUpiId(trimmedUpiId)) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const pa = encodeURIComponent(trimmedUpiId).replace(/%40/g, "@");
+  const pn = encodeURIComponent(shopName.trim() || "Shop");
+  const am = roundCurrency(amount).toFixed(2);
+  const tn = encodeURIComponent(invoiceNo.trim() || "Invoice");
+
+  return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`;
+}
+
+
